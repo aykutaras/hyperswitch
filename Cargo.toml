@@ -50,3 +50,23 @@ option_map_unit_fn = "allow"
 strip = true
 lto = true
 codegen-units = 1
+
+# Development-cycle build: optimized but without LTO, with parallel codegen and
+# symbols kept. Selected via the Dockerfile's CARGO_BUILD_PROFILE build arg;
+# never the default.
+#
+# Backported from upstream main. Needed here because `release` cannot be built
+# on a 24 GB machine: `lto = true` with `codegen-units = 1` links the whole
+# `router` crate in ONE rustc process, which the kernel OOM-killed after 62
+# minutes even with a 15.7 GB VM and --jobs 4:
+#
+#   error: could not compile `router` (lib)
+#   rustc ... -C linker-plugin-lto -C codegen-units=1 ... (signal: 9, SIGKILL)
+#
+# Production images should still be built with `release`, on a builder that
+# has the memory for it.
+[profile.release-fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = "none"
