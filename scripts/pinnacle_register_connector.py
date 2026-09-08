@@ -99,6 +99,43 @@ SITES = [
         text="            api_enums::Connector::__PASCAL__ => Self::__PASCAL__,",
         what="Connector -> RoutableConnectors conversion",
     ),
+    dict(
+        # add_connector.sh DOES add the `pub <name>: Option<ConnectorTomlConfig>`
+        # field to this file, but not the match arm that reads it back, so the
+        # crate fails with E0004 non-exhaustive patterns.
+        file="crates/connector_configs/src/connector.rs",
+        anchor=r"^            Connector::Shift4 => Ok\(connector_data\.shift4\),$",
+        span=1,
+        text="            Connector::__PASCAL__ => Ok(connector_data.__NAME__),",
+        what="connector_configs TOML lookup match",
+    ),
+    dict(
+        # Auth-type validation performed when a merchant connector account is
+        # created. Without an arm here the merchant can never be onboarded.
+        file="crates/router/src/core/connector_validation.rs",
+        anchor=r"^            api_enums::Connector::Shift4 => \{$",
+        span=4,
+        text=(
+            "            api_enums::Connector::__PASCAL__ => {\n"
+            "                __NAME__::transformers::__PASCAL__AuthType::try_from(self.auth_type)?;\n"
+            "                Ok(())\n"
+            "            }"
+        ),
+        what="merchant-connector-account auth validation",
+    ),
+    dict(
+        # A SECOND copy of the dispatch match, identical in shape to the one in
+        # connector_mapping.rs. Both are exhaustive, so both must be updated.
+        file="crates/router/src/types/api/feature_matrix.rs",
+        anchor=r"^                enums::Connector::Shift4 => \{$",
+        span=3,
+        text=(
+            "                enums::Connector::__PASCAL__ => {\n"
+            "                    Ok(ConnectorEnum::Old(Box::new(connector::__PASCAL__::new())))\n"
+            "                }"
+        ),
+        what="feature_matrix dispatch match",
+    ),
 ]
 
 
@@ -121,7 +158,7 @@ def main() -> int:
             return 1
 
         lines = path.read_text(encoding="utf-8").splitlines()
-        new_text = site["text"].replace("__PASCAL__", pascal)
+        new_text = site["text"].replace("__PASCAL__", pascal).replace("__NAME__", name)
 
         if new_text.splitlines()[0] in lines:
             skipped.append(site["what"])
