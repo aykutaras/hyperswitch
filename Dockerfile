@@ -3,6 +3,23 @@ FROM public.ecr.aws/docker/library/rust:trixie as builder
 ARG EXTRA_FEATURES=""
 ARG VERSION_FEATURE_SET="v1"
 
+# Cap on concurrent rustc processes.
+#
+# Unset, cargo uses one job per CPU. On a 12-CPU builder that put ~12 large
+# crates (analytics, subscriptions, payment_methods, scheduler) through rustc
+# at once and killed the BuildKit daemon outright:
+#
+#   ERROR: failed to build: failed to receive status:
+#          rpc error: code = Unavailable desc = error reading from server: EOF
+#
+# It reads as a daemon fault rather than a compile error - no rustc diagnostic,
+# no OOM line, just the connection dropping ~11 minutes into the cargo step.
+#
+# Costs less wall-clock than the number suggests: the tail of this build
+# serialises on crate dependencies regardless of the job count. Raise it on a
+# builder with memory to spare.
+ARG CARGO_BUILD_JOBS=4
+
 RUN apt-get update \
     && apt-get install -y libpq-dev libssl-dev pkg-config protobuf-compiler
 
@@ -51,6 +68,7 @@ COPY . .
 # `redis-rs` rather than `fred`: the shipped v1.126.0 image's binary contains
 # index.crates.io-*/redis-1.2.0 and no fred-*, matching Cargo.lock exactly.
 RUN cargo build \
+    --jobs ${CARGO_BUILD_JOBS} \
     --release \
     --no-default-features \
     --features release \
