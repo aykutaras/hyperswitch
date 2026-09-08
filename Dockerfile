@@ -36,10 +36,30 @@ ENV RUSTUP_MAX_RETRIES=10
 ENV RUST_BACKTRACE="short"
 
 COPY . .
+# `--no-default-features` below strips the router's default feature set, and that
+# set is the only thing selecting a Redis backend:
+#
+#   default = ["common_default", "v1", "redis-rs"]
+#   release = ["stripe", "email", ...]              <- no backend
+#
+# Every consumer declares `redis_interface = { default-features = false }` and
+# re-enables a backend through its own feature, so with neither selected the
+# crate refuses to build:
+#
+#   error: Either feature "fred" or "redis-rs" must be enabled for this crate.
+#
+# Upstream supplies this out-of-band through EXTRA_FEATURES (see
+# docs/building_docker_images.md, whose command differs from this file), so the
+# Dockerfile as published cannot build on its own. Pinning it here means the
+# build cannot be run wrong.
+#
+# `redis-rs` rather than `fred`: the shipped v1.126.0 image's binary contains
+# index.crates.io-*/redis-1.2.0 and no fred-*, matching Cargo.lock exactly.
 RUN cargo build \
     --profile ${CARGO_BUILD_PROFILE} \
     --no-default-features \
     --features release \
+    --features redis-rs \
     --features ${VERSION_FEATURE_SET} \
     ${EXTRA_FEATURES}
 
