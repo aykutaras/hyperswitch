@@ -130,6 +130,7 @@ pub struct Connectors {
     pub payu: ConnectorParams,
     pub peachpayments: ConnectorParams,
     pub phonepe: ConnectorParams,
+    pub pinnacle: ConnectorParams,
     pub placetopay: ConnectorParams,
     pub plaid: ConnectorParams,
     pub powertranz: ConnectorParams,

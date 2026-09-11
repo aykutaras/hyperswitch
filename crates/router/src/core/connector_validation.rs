@@ -556,6 +556,10 @@ impl ConnectorAuthTypeAndMetadataValidation<'_> {
                 shift4::transformers::Shift4AuthType::try_from(self.auth_type)?;
                 Ok(())
             }
+            api_enums::Connector::Pinnacle => {
+                pinnacle::transformers::PinnacleAuthType::try_from(self.auth_type)?;
+                Ok(())
+            }
             api_enums::Connector::Silverflow => {
                 silverflow::transformers::SilverflowAuthType::try_from(self.auth_type)?;
                 Ok(())

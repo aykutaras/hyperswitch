@@ -1,0 +1,352 @@
+use common_enums::enums;
+use common_utils::{pii::Email, request::Method, types::StringMajorUnit};
+use error_stack::ResultExt;
+use hyperswitch_domain_models::{
+    payment_method_data::PaymentMethodData,
+    router_data::{ConnectorAuthType, ErrorResponse, RouterData},
+    router_request_types::ResponseId,
+    router_response_types::{PaymentsResponseData, RedirectForm, RefundsResponseData},
+    types::{PaymentsAuthorizeRouterData, RefundsRouterData},
+};
+use hyperswitch_interfaces::{
+    consts::{NO_ERROR_CODE, NO_ERROR_MESSAGE},
+    errors,
+};
+use hyperswitch_masking::Secret;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    types::{RefundsResponseRouterData, ResponseRouterData},
+    utils::{self, CardData, PaymentsAuthorizeRequestData, RouterData as _},
+};
+
+pub struct PinnacleRouterData<T> {
+    pub amount: StringMajorUnit,
+    pub router_data: T,
+}
+
+impl<T> From<(StringMajorUnit, T)> for PinnacleRouterData<T> {
+    fn from((amount, item): (StringMajorUnit, T)) -> Self {
+        Self {
+            amount,
+            router_data: item,
+        }
+    }
+}
+
+/// `POST /v1/payment`. payment-api decides on 3DS itself; no field asks for it or skips it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnaclePaymentsRequest {
+    number: cards::CardNumber,
+    expiry_month: Secret<String>,
+    expiry_year: Secret<String>,
+    cvv: Secret<String>,
+    reference_no: String,
+    return_url: String,
+    amount: StringMajorUnit,
+    currency: enums::Currency,
+    email: Email,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ip: Option<Secret<String>>,
+    billing_first_name: Secret<String>,
+    billing_last_name: Secret<String>,
+    billing_address1: Secret<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    billing_address2: Option<Secret<String>>,
+    billing_city: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    billing_state: Option<Secret<String>>,
+    billing_postcode: Secret<String>,
+    billing_country: enums::CountryAlpha2,
+    billing_phone: Secret<String>,
+}
+
+impl TryFrom<&PinnacleRouterData<&PaymentsAuthorizeRouterData>> for PinnaclePaymentsRequest {
+    type Error = error_stack::Report<errors::ConnectorError>;
+    fn try_from(
+        item: &PinnacleRouterData<&PaymentsAuthorizeRouterData>,
+    ) -> Result<Self, Self::Error> {
+        let router_data = item.router_data;
+        let card = match &router_data.request.payment_method_data {
+            PaymentMethodData::Card(card) => card,
+            _ => Err(errors::ConnectorError::NotImplemented(
+                utils::get_unimplemented_payment_method_error_message("pinnacle"),
+            ))?,
+        };
+        let email = router_data
+            .get_billing_email()
+            .ok()
+            .or_else(|| router_data.request.email.clone())
+            .ok_or_else(utils::missing_field_err(
+                "payment_method_data.billing.email",
+            ))?;
+
+        Ok(Self {
+            number: card.card_number.clone(),
+            expiry_month: card.get_card_expiry_month_2_digit()?,
+            expiry_year: card.get_expiry_year_4_digit(),
+            cvv: card.card_cvc.clone(),
+            reference_no: router_data.connector_request_reference_id.clone(),
+            return_url: router_data.request.get_router_return_url()?,
+            amount: item.amount.clone(),
+            currency: router_data.request.currency,
+            email,
+            ip: router_data
+                .request
+                .browser_info
+                .as_ref()
+                .and_then(|browser_info| browser_info.ip_address)
+                .map(|ip_address| Secret::new(ip_address.to_string())),
+            billing_first_name: router_data.get_billing_first_name()?,
+            billing_last_name: router_data.get_billing_last_name()?,
+            billing_address1: router_data.get_billing_line1()?,
+            billing_address2: router_data.get_optional_billing_line2(),
+            billing_city: router_data.get_billing_city()?,
+            billing_state: router_data.get_optional_billing_state(),
+            billing_postcode: router_data.get_billing_zip()?,
+            billing_country: router_data.get_billing_country()?,
+            billing_phone: router_data.get_billing_phone_number()?,
+        })
+    }
+}
+
+pub struct PinnacleAuthType {
+    pub(super) api_key: Secret<String>,
+}
+
+impl TryFrom<&ConnectorAuthType> for PinnacleAuthType {
+    type Error = error_stack::Report<errors::ConnectorError>;
+    fn try_from(auth_type: &ConnectorAuthType) -> Result<Self, Self::Error> {
+        match auth_type {
+            ConnectorAuthType::HeaderKey { api_key } => Ok(Self {
+                api_key: api_key.to_owned(),
+            }),
+            _ => Err(errors::ConnectorError::FailedToObtainAuthType.into()),
+        }
+    }
+}
+
+/// payment-api's transaction status. `DECLINED`, `CANCELLED` and `ERROR` are final.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum PinnacleTransactionStatus {
+    Approved,
+    Pending,
+    Waiting,
+    Declined,
+    Cancelled,
+    Error,
+}
+
+/// Body of `POST /v1/payment` and of `GET /v1/payment/status`. Only the payment
+/// response carries `redirectUrl`, and only while 3DS is waiting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnacleTransactionResponse {
+    uuid: String,
+    status: PinnacleTransactionStatus,
+    reference_no: Option<String>,
+    message: Option<String>,
+    failure_code: Option<String>,
+    error_reason: Option<String>,
+    redirect_url: Option<String>,
+}
+
+impl<F, T> TryFrom<ResponseRouterData<F, PinnacleTransactionResponse, T, PaymentsResponseData>>
+    for RouterData<F, T, PaymentsResponseData>
+{
+    type Error = error_stack::Report<errors::ConnectorError>;
+    fn try_from(
+        item: ResponseRouterData<F, PinnacleTransactionResponse, T, PaymentsResponseData>,
+    ) -> Result<Self, Self::Error> {
+        let response = item.response;
+        let status = match response.status {
+            PinnacleTransactionStatus::Approved => enums::AttemptStatus::Charged,
+            PinnacleTransactionStatus::Waiting if response.redirect_url.is_some() => {
+                enums::AttemptStatus::AuthenticationPending
+            }
+            // A status lookup carries no redirectUrl. While payment-api still waits on 3DS,
+            // the customer has not finished it: the payment still needs their action.
+            PinnacleTransactionStatus::Waiting
+                if item.data.status == enums::AttemptStatus::AuthenticationPending =>
+            {
+                enums::AttemptStatus::AuthenticationPending
+            }
+            PinnacleTransactionStatus::Waiting | PinnacleTransactionStatus::Pending => {
+                enums::AttemptStatus::Pending
+            }
+            PinnacleTransactionStatus::Declined
+            | PinnacleTransactionStatus::Cancelled
+            | PinnacleTransactionStatus::Error => enums::AttemptStatus::Failure,
+        };
+
+        if status == enums::AttemptStatus::Failure {
+            return Ok(Self {
+                status,
+                response: Err(ErrorResponse {
+                    status_code: item.http_code,
+                    code: response
+                        .failure_code
+                        .unwrap_or_else(|| NO_ERROR_CODE.to_string()),
+                    message: response
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| NO_ERROR_MESSAGE.to_string()),
+                    reason: response.error_reason.or(response.message),
+                    attempt_status: Some(status),
+                    connector_transaction_id: Some(response.uuid),
+                    connector_response_reference_id: response.reference_no,
+                    network_advice_code: None,
+                    network_decline_code: None,
+                    network_error_message: None,
+                    connector_metadata: None,
+                }),
+                ..item.data
+            });
+        }
+
+        let redirection_data = match (status, response.redirect_url) {
+            (enums::AttemptStatus::AuthenticationPending, Some(redirect_url)) => {
+                let redirect_url = url::Url::parse(&redirect_url)
+                    .change_context(errors::ConnectorError::ResponseDeserializationFailed)?;
+                Some(RedirectForm::from((redirect_url, Method::Get)))
+            }
+            _ => None,
+        };
+
+        Ok(Self {
+            status,
+            response: Ok(PaymentsResponseData::TransactionResponse {
+                resource_id: ResponseId::ConnectorTransactionId(response.uuid),
+                redirection_data: Box::new(redirection_data),
+                mandate_reference: Box::new(None),
+                connector_metadata: None,
+                network_txn_id: None,
+                network_txn_link_id: None,
+                connector_response_reference_id: response.reference_no,
+                incremental_authorization_allowed: None,
+                authentication_data: None,
+                charges: None,
+            }),
+            ..item.data
+        })
+    }
+}
+
+/// `POST /v1/refund`. The amount is always sent, so a full refund is explicit too.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnacleRefundRequest {
+    uuid: String,
+    amount: StringMajorUnit,
+    reference_no: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl<F> TryFrom<&PinnacleRouterData<&RefundsRouterData<F>>> for PinnacleRefundRequest {
+    type Error = error_stack::Report<errors::ConnectorError>;
+    fn try_from(item: &PinnacleRouterData<&RefundsRouterData<F>>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            uuid: item.router_data.request.connector_transaction_id.clone(),
+            amount: item.amount.clone(),
+            reference_no: item.router_data.request.refund_id.clone(),
+            reason: item.router_data.request.reason.clone(),
+        })
+    }
+}
+
+/// Body of `POST /v1/refund`, and of `GET /v1/payment/status` for the refund's own uuid.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnacleRefundResponse {
+    uuid: String,
+    status: PinnacleTransactionStatus,
+    message: Option<String>,
+    failure_code: Option<String>,
+}
+
+impl<F> TryFrom<RefundsResponseRouterData<F, PinnacleRefundResponse>> for RefundsRouterData<F> {
+    type Error = error_stack::Report<errors::ConnectorError>;
+    fn try_from(
+        item: RefundsResponseRouterData<F, PinnacleRefundResponse>,
+    ) -> Result<Self, Self::Error> {
+        let response = item.response;
+        let refund_status = match response.status {
+            PinnacleTransactionStatus::Approved => enums::RefundStatus::Success,
+            PinnacleTransactionStatus::Pending | PinnacleTransactionStatus::Waiting => {
+                enums::RefundStatus::Pending
+            }
+            PinnacleTransactionStatus::Declined
+            | PinnacleTransactionStatus::Cancelled
+            | PinnacleTransactionStatus::Error => enums::RefundStatus::Failure,
+        };
+
+        // The router records an error with a 2xx status as a definite refund failure.
+        let refund_response = if refund_status == enums::RefundStatus::Failure {
+            Err(ErrorResponse {
+                status_code: item.http_code,
+                code: response
+                    .failure_code
+                    .unwrap_or_else(|| NO_ERROR_CODE.to_string()),
+                message: response
+                    .message
+                    .clone()
+                    .unwrap_or_else(|| NO_ERROR_MESSAGE.to_string()),
+                reason: response.message,
+                attempt_status: None,
+                connector_transaction_id: Some(response.uuid),
+                connector_response_reference_id: None,
+                network_advice_code: None,
+                network_decline_code: None,
+                network_error_message: None,
+                connector_metadata: None,
+            })
+        } else {
+            Ok(RefundsResponseData {
+                connector_refund_id: response.uuid,
+                refund_status,
+            })
+        };
+
+        Ok(Self {
+            response: refund_response,
+            ..item.data
+        })
+    }
+}
+
+/// payment-api renders every error as `{"status": "ERROR", "message": ...}`, adding
+/// `errors` (field name to messages) when validation fails.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PinnacleErrorResponse {
+    pub message: Option<String>,
+    pub errors: Option<serde_json::Value>,
+}
+
+impl PinnacleErrorResponse {
+    pub fn reason(&self) -> Option<String> {
+        match &self.errors {
+            Some(serde_json::Value::Object(fields)) => Some(
+                fields
+                    .iter()
+                    .map(|(field, messages)| match messages {
+                        serde_json::Value::Array(messages) => format!(
+                            "{field}: {}",
+                            messages
+                                .iter()
+                                .filter_map(serde_json::Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        ),
+                        other => format!("{field}: {other}"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            ),
+            Some(other) => Some(other.to_string()),
+            None => self.message.clone(),
+        }
+    }
+}

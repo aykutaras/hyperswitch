@@ -122,6 +122,7 @@ pub struct ConnectorAuthentication {
     pub payu: Option<BodyKey>,
     pub peachpayments: Option<HeaderKey>,
     pub phonepe: Option<HeaderKey>,
+    pub pinnacle: Option<HeaderKey>,
     pub placetopay: Option<BodyKey>,
     pub plaid: Option<BodyKey>,
     pub powertranz: Option<BodyKey>,

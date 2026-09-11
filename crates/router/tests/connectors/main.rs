@@ -107,6 +107,7 @@ mod paytm;
 mod payu;
 mod peachpayments;
 mod phonepe;
+mod pinnacle;
 mod placetopay;
 mod plaid;
 mod powertranz;
