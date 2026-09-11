@@ -72,21 +72,32 @@ COPY . .
 #
 # `redis-rs` rather than `fred`: the shipped v1.126.0 image's binary contains
 # index.crates.io-*/redis-1.2.0 and no fred-*, matching Cargo.lock exactly.
-RUN cargo build \
+# Cache mounts keep cargo's registry and target directory between builds. The
+# build context includes .git (vergen reads it), so any git activity in the
+# checkout changes `COPY . .` and re-runs this step; with the target directory
+# cached, cargo then recompiles only what changed instead of every crate
+# (hyperswitch-k8s DEPLOYMENT_GUIDE.md §10).
+#
+# A cache mount is not part of the image, so the binaries are copied out in this
+# same step. All of them are staged and BINARY is read only in the runtime
+# stage, so this step stays shared by the router, consumer and producer images.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/router/target,sharing=locked \
+    cargo build \
     --jobs ${CARGO_BUILD_JOBS} \
     --profile ${CARGO_BUILD_PROFILE} \
     --no-default-features \
     --features release \
     --features redis-rs \
     --features ${VERSION_FEATURE_SET} \
-    ${EXTRA_FEATURES}
-
-# Stage the binary at a profile-independent path for the runtime stage
-# (cargo places the `dev` profile under `target/debug`). BINARY is consumed
-# after the build so the build layer stays shared across images.
-ARG BINARY=router
-RUN mkdir -p /router/out \
-    && cp "/router/target/$([ "${CARGO_BUILD_PROFILE}" = "dev" ] && echo debug || echo "${CARGO_BUILD_PROFILE}")/${BINARY}" "/router/out/${BINARY}"
+    ${EXTRA_FEATURES} \
+    && dir="/router/target/$([ "${CARGO_BUILD_PROFILE}" = "dev" ] && echo debug || echo "${CARGO_BUILD_PROFILE}")" \
+    && mkdir -p /router/out \
+    && for bin in router scheduler drainer; do \
+         if [ -f "$dir/$bin" ]; then cp "$dir/$bin" /router/out/; fi; \
+       done \
+    && ls -l /router/out
 
 
 
