@@ -46,11 +46,7 @@ use hyperswitch_interfaces::{
 use hyperswitch_masking::{ExposeInterface, Mask};
 use transformers as pinnacle;
 
-use crate::{
-    constants::headers,
-    types::ResponseRouterData,
-    utils::{self, PaymentsSyncRequestData, RefundsRequestData},
-};
+use crate::{constants::headers, types::ResponseRouterData, utils};
 
 #[derive(Clone)]
 pub struct Pinnacle {
@@ -311,11 +307,14 @@ impl ConnectorIntegration<PSync, PaymentsSyncData, PaymentsResponseData> for Pin
         req: &PaymentsSyncRouterData,
         connectors: &Connectors,
     ) -> CustomResult<String, errors::ConnectorError> {
-        // Always by uuid: referenceNo is not unique, and a lookup by it returns the latest match.
-        let uuid = req.request.get_connector_transaction_id()?;
+        // By our own reference, not by uuid: payment-api copies a payment's uuid onto its
+        // refunds, so a lookup by uuid can return a refund. This is the reference the payment
+        // was created with, unique per attempt, and payment-api returns the latest
+        // transaction carrying it.
         Ok(format!(
-            "{}?uuid={uuid}",
-            self.api_url(connectors, "payment/status")
+            "{}?referenceNo={}",
+            self.api_url(connectors, "payment/status"),
+            urlencoding::encode(&req.connector_request_reference_id)
         ))
     }
 
@@ -470,11 +469,12 @@ impl ConnectorIntegration<RSync, RefundsData, RefundsResponseData> for Pinnacle 
         req: &RefundSyncRouterData,
         connectors: &Connectors,
     ) -> CustomResult<String, errors::ConnectorError> {
-        // A refund is a transaction of its own; its status comes from the same lookup.
-        let uuid = req.request.get_connector_refund_id()?;
+        // A refund is a transaction of its own but carries its payment's uuid, so it is
+        // looked up by the reference it was created with, which is unique per refund.
         Ok(format!(
-            "{}?uuid={uuid}",
-            self.api_url(connectors, "payment/status")
+            "{}?referenceNo={}",
+            self.api_url(connectors, "payment/status"),
+            urlencoding::encode(&req.request.refund_id)
         ))
     }
 

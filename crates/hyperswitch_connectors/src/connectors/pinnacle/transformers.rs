@@ -251,13 +251,15 @@ impl<F> TryFrom<&PinnacleRouterData<&RefundsRouterData<F>>> for PinnacleRefundRe
         Ok(Self {
             uuid: item.router_data.request.connector_transaction_id.clone(),
             amount: item.amount.clone(),
+            // Refund sync finds the refund by this reference.
             reference_no: item.router_data.request.refund_id.clone(),
             reason: item.router_data.request.reason.clone(),
         })
     }
 }
 
-/// Body of `POST /v1/refund`, and of `GET /v1/payment/status` for the refund's own uuid.
+/// Body of `POST /v1/refund`, and of `GET /v1/payment/status` for the refund's reference.
+/// Its `uuid` is the payment's: payment-api copies the payment row to make the refund.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PinnacleRefundResponse {
