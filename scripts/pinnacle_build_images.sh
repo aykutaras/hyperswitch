@@ -5,8 +5,8 @@
 #
 # Given a connector name, each image is also checked to contain it.
 #
-# One cargo build feeds all three images: the Dockerfile reads BINARY only after
-# the cargo step, so consumer and producer reuse the router's cached layer
+# One cargo build feeds all three images: the Dockerfile reads BINARY only in its
+# runtime stage, so consumer and producer reuse the router's cached layer
 # (measured: router 31m24s, then 19s and 17s).
 #
 # Memory is the constraint (hyperswitch-k8s DEPLOYMENT_GUIDE.md §10):
