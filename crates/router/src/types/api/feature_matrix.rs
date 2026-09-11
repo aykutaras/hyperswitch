@@ -340,6 +340,9 @@ impl FeatureMatrixConnectorData {
                 enums::Connector::Shift4 => {
                     Ok(ConnectorEnum::Old(Box::new(connector::Shift4::new())))
                 }
+                enums::Connector::Pinnacle => {
+                    Ok(ConnectorEnum::Old(Box::new(connector::Pinnacle::new())))
+                }
                 enums::Connector::Square => Ok(ConnectorEnum::Old(Box::new(&connector::Square))),
                 enums::Connector::Stax => Ok(ConnectorEnum::Old(Box::new(&connector::Stax))),
                 enums::Connector::Stripe => {

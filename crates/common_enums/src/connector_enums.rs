@@ -174,6 +174,7 @@ pub enum Connector {
     Revolv3,
     Santander,
     Shift4,
+    Pinnacle,
     Silverflow,
     Square,
     Stax,
@@ -399,6 +400,7 @@ impl Connector {
             | Self::Revolv3
             | Self::Santander
             | Self::Shift4
+            | Self::Pinnacle
             | Self::Silverflow
             | Self::Square
             | Self::Stax

@@ -1710,6 +1710,24 @@ fn get_cards_required_fields() -> HashMap<Connector, RequiredFieldFinal> {
             fields(vec![], vec![], card_with_name()),
         ),
         (
+            Connector::Pinnacle,
+            fields(
+                vec![],
+                vec![],
+                [
+                    card_basic(),
+                    billing_email_billing_name_phone(),
+                    vec![
+                        RequiredField::BillingAddressLine1,
+                        RequiredField::BillingAddressCity,
+                        RequiredField::BillingAddressZip,
+                        RequiredField::BillingAddressCountries(vec!["ALL"]),
+                    ],
+                ]
+                .concat(),
+            ),
+        ),
+        (
             Connector::Powertranz,
             fields(vec![], card_with_name(), vec![]),
         ),

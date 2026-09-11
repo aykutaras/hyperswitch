@@ -7939,3 +7939,15 @@ payment_method_type = "Discover"
 payment_method_type = "DinersClub"
 [[givepayments.debit]]
 payment_method_type = "UnionPay"
+
+[pinnacle]
+[[pinnacle.credit]]
+  payment_method_type = "Mastercard"
+[[pinnacle.credit]]
+  payment_method_type = "Visa"
+[[pinnacle.debit]]
+  payment_method_type = "Mastercard"
+[[pinnacle.debit]]
+  payment_method_type = "Visa"
+[pinnacle.connector_auth.HeaderKey]
+api_key = "API Key"
