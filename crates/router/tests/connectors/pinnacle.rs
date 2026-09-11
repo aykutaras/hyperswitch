@@ -125,7 +125,7 @@ fn sync_data(connector_transaction_id: String) -> Option<types::PaymentsSyncData
     })
 }
 
-async fn make_approved_payment(minor_amount: i64) -> String {
+async fn make_approved_payment(minor_amount: i64) -> types::PaymentsAuthorizeRouterData {
     let response = CONNECTOR
         .make_payment(
             payment_data(APPROVED_CARD, minor_amount),
@@ -134,19 +134,26 @@ async fn make_approved_payment(minor_amount: i64) -> String {
         .await
         .expect("Payment response");
     assert_eq!(response.status, enums::AttemptStatus::Charged);
-    utils::get_connector_transaction_id(response.response).expect("payment-api uuid")
+    response
 }
 
 #[actix_web::test]
 async fn should_make_payment() {
-    make_approved_payment(101).await;
+    let payment = make_approved_payment(101).await;
+    assert!(
+        utils::get_connector_transaction_id(payment.response).is_some(),
+        "no payment-api uuid"
+    );
 }
 
+// Payment sync goes by the reference the payment was created with, as the router does.
 #[actix_web::test]
 async fn should_sync_auto_captured_payment() {
-    let txn_id = make_approved_payment(102).await;
+    let payment = make_approved_payment(102).await;
+    let reference = payment.connector_request_reference_id.clone();
+    let txn_id = utils::get_connector_transaction_id(payment.response).expect("payment-api uuid");
     let response = CONNECTOR
-        .sync_payment(sync_data(txn_id), get_default_payment_info())
+        .sync_payment_with_reference(reference, sync_data(txn_id), get_default_payment_info())
         .await
         .expect("PSync response");
     assert_eq!(response.status, enums::AttemptStatus::Charged);
@@ -182,13 +189,14 @@ async fn should_redirect_to_3ds() {
 
 #[actix_web::test]
 async fn should_keep_unfinished_3ds_payment_open_on_sync() {
-    let response = CONNECTOR
+    let payment = CONNECTOR
         .make_payment(payment_data(THREE_DS_CARD, 105), get_default_payment_info())
         .await
         .expect("Payment response");
-    let txn_id = utils::get_connector_transaction_id(response.response).expect("payment-api uuid");
+    let reference = payment.connector_request_reference_id.clone();
+    let txn_id = utils::get_connector_transaction_id(payment.response).expect("payment-api uuid");
     let response = CONNECTOR
-        .sync_payment(sync_data(txn_id), get_default_payment_info())
+        .sync_payment_with_reference(reference, sync_data(txn_id), get_default_payment_info())
         .await
         .expect("PSync response");
     assert!(
@@ -233,20 +241,26 @@ async fn should_partially_refund_succeeded_payment() {
     );
 }
 
+// Refund sync goes by the reference the refund was sent with: the same refund_id.
 #[actix_web::test]
 async fn should_sync_refund() {
+    let refund_request = refund_data(108, 108);
     let refund = CONNECTOR
         .make_payment_and_refund(
             payment_data(APPROVED_CARD, 108),
-            refund_data(108, 108),
+            refund_request.clone(),
             get_default_payment_info(),
         )
         .await
         .expect("Refund response");
+    let connector_refund_id = refund.response.unwrap().connector_refund_id;
     let response = CONNECTOR
         .sync_refund(
-            refund.response.unwrap().connector_refund_id,
-            None,
+            connector_refund_id.clone(),
+            refund_request.map(|data| types::RefundsData {
+                connector_refund_id: Some(connector_refund_id),
+                ..data
+            }),
             get_default_payment_info(),
         )
         .await
@@ -255,6 +269,32 @@ async fn should_sync_refund() {
         response.response.unwrap().refund_status,
         enums::RefundStatus::Success,
     );
+}
+
+// payment-api gives a refund its payment's uuid, which is what a lookup by uuid could
+// get wrong: after a refund, the payment must still sync as charged.
+#[actix_web::test]
+async fn should_sync_payment_after_it_is_refunded() {
+    let payment = make_approved_payment(112).await;
+    let reference = payment.connector_request_reference_id.clone();
+    let txn_id = utils::get_connector_transaction_id(payment.response).expect("payment-api uuid");
+    let refund = CONNECTOR
+        .refund_payment(
+            txn_id.clone(),
+            refund_data(112, 50),
+            get_default_payment_info(),
+        )
+        .await
+        .expect("Refund response");
+    assert_eq!(
+        refund.response.unwrap().refund_status,
+        enums::RefundStatus::Success,
+    );
+    let response = CONNECTOR
+        .sync_payment_with_reference(reference, sync_data(txn_id), get_default_payment_info())
+        .await
+        .expect("PSync response");
+    assert_eq!(response.status, enums::AttemptStatus::Charged);
 }
 
 #[actix_web::test]
@@ -302,8 +342,9 @@ async fn should_reject_duplicate_payment_within_ten_seconds() {
     assert_eq!(response.response.unwrap_err().code, "409");
 }
 
+// The test helpers make up a new reference for every call, so nothing carries this one.
 #[actix_web::test]
-async fn should_fail_sync_for_unknown_transaction() {
+async fn should_fail_sync_for_unknown_reference() {
     let response = CONNECTOR
         .sync_payment(
             sync_data(uuid::Uuid::new_v4().to_string()),
@@ -312,6 +353,6 @@ async fn should_fail_sync_for_unknown_transaction() {
         .await;
     assert!(
         response.map_or(true, |router_data| router_data.response.is_err()),
-        "a status lookup for an unknown uuid succeeded"
+        "a status lookup for an unknown reference succeeded"
     );
 }

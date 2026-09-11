@@ -176,6 +176,23 @@ pub trait ConnectorActions: Connector {
         Box::pin(call_connector(request, integration)).await
     }
 
+    /// Syncs a payment under the reference it was created with, for connectors that look
+    /// payments up by `connector_request_reference_id` rather than by their own id.
+    async fn sync_payment_with_reference(
+        &self,
+        connector_request_reference_id: String,
+        payment_data: Option<types::PaymentsSyncData>,
+        payment_info: Option<PaymentInfo>,
+    ) -> Result<types::PaymentsSyncRouterData, Report<ConnectorError>> {
+        let integration = self.get_data().connector.get_connector_integration();
+        let mut request: types::PaymentsSyncRouterData = self.generate_data(
+            payment_data.unwrap_or_else(|| PaymentSyncType::default().0),
+            payment_info,
+        );
+        request.connector_request_reference_id = connector_request_reference_id;
+        Box::pin(call_connector(request, integration)).await
+    }
+
     /// will retry the psync till the given status matches or retry max 3 times
     async fn psync_retry_till_status_matches(
         &self,
