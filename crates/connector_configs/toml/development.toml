@@ -9508,3 +9508,5 @@ key1="Secret API Key"
   payment_method_type = "Visa"
 [pinnacle.connector_auth.HeaderKey]
 api_key = "API Key"
+[pinnacle.connector_webhook_details]
+merchant_secret="Source verification key"
