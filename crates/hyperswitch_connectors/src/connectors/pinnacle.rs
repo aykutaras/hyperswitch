@@ -4,12 +4,13 @@ use std::sync::LazyLock;
 
 use common_enums::{enums, CallConnectorAction, PaymentAction};
 use common_utils::{
+    crypto,
     errors::CustomResult,
-    ext_traits::BytesExt,
+    ext_traits::{ByteSliceExt, BytesExt},
     request::{Method, Request, RequestBuilder, RequestContent},
     types::{AmountConvertor, StringMajorUnit, StringMajorUnitForConnector},
 };
-use error_stack::{report, ResultExt};
+use error_stack::ResultExt;
 use hyperswitch_domain_models::{
     router_data::{AccessToken, ConnectorAuthType, ErrorResponse, RouterData},
     router_flow_types::{
@@ -542,27 +543,79 @@ impl ConnectorRedirectResponse for Pinnacle {
 
 #[async_trait::async_trait]
 impl webhooks::IncomingWebhook for Pinnacle {
-    fn get_webhook_object_reference_id(
+    fn get_webhook_source_verification_algorithm(
         &self,
         _request: &webhooks::IncomingWebhookRequestDetails<'_>,
+    ) -> CustomResult<Box<dyn crypto::VerifySignature + Send>, errors::ConnectorError> {
+        Ok(Box::new(crypto::HmacSha256))
+    }
+
+    fn get_webhook_source_verification_signature(
+        &self,
+        request: &webhooks::IncomingWebhookRequestDetails<'_>,
+        _connector_webhook_secrets: &api_models::webhooks::ConnectorWebhookSecrets,
+    ) -> CustomResult<Vec<u8>, errors::ConnectorError> {
+        let signature = utils::get_header_key_value("X-Signature", request.headers)?;
+        hex::decode(signature).change_context(errors::ConnectorError::WebhookSignatureNotFound)
+    }
+
+    fn get_webhook_source_verification_message(
+        &self,
+        request: &webhooks::IncomingWebhookRequestDetails<'_>,
+        _merchant_id: &common_utils::id_type::MerchantId,
+        _connector_webhook_secrets: &api_models::webhooks::ConnectorWebhookSecrets,
+    ) -> CustomResult<Vec<u8>, errors::ConnectorError> {
+        let body: serde_json::Value = request
+            .body
+            .parse_struct("PinnacleWebhookBody")
+            .change_context(errors::ConnectorError::WebhookBodyDecodingFailed)?;
+        let request_id = utils::get_header_key_value("X-Request-ID", request.headers)?;
+        let timestamp = utils::get_header_key_value("X-Timestamp", request.headers)?
+            .parse::<i64>()
+            .change_context(errors::ConnectorError::WebhookSourceVerificationFailed)
+            .attach_printable("X-Timestamp is not a whole number of seconds")?;
+
+        pinnacle::webhook_signature_message(&body, request_id, timestamp)
+    }
+
+    fn get_webhook_object_reference_id(
+        &self,
+        request: &webhooks::IncomingWebhookRequestDetails<'_>,
     ) -> CustomResult<api_models::webhooks::ObjectReferenceId, errors::ConnectorError> {
-        Err(report!(errors::ConnectorError::WebhooksNotImplemented))
+        let body: pinnacle::PinnacleWebhookBody = request
+            .body
+            .parse_struct("PinnacleWebhookBody")
+            .change_context(errors::ConnectorError::WebhookReferenceIdNotFound)?;
+
+        body.object_reference_id()
     }
 
     fn get_webhook_event_type(
         &self,
-        _request: &webhooks::IncomingWebhookRequestDetails<'_>,
+        request: &webhooks::IncomingWebhookRequestDetails<'_>,
         _context: Option<&webhooks::WebhookContext>,
     ) -> CustomResult<api_models::webhooks::IncomingWebhookEvent, errors::ConnectorError> {
-        Err(report!(errors::ConnectorError::WebhooksNotImplemented))
+        let body: pinnacle::PinnacleWebhookBody = request
+            .body
+            .parse_struct("PinnacleWebhookBody")
+            .change_context(errors::ConnectorError::WebhookEventTypeNotFound)?;
+
+        Ok(body.event_type())
     }
 
     fn get_webhook_resource_object(
         &self,
-        _request: &webhooks::IncomingWebhookRequestDetails<'_>,
+        request: &webhooks::IncomingWebhookRequestDetails<'_>,
     ) -> CustomResult<Box<dyn hyperswitch_masking::ErasedMaskSerialize>, errors::ConnectorError>
     {
-        Err(report!(errors::ConnectorError::WebhooksNotImplemented))
+        // Handed to the payment or refund flow once the signature checks out, and read
+        // there the way a status lookup's body is read.
+        let body: pinnacle::PinnacleWebhookBody = request
+            .body
+            .parse_struct("PinnacleWebhookBody")
+            .change_context(errors::ConnectorError::WebhookResourceObjectNotFound)?;
+
+        Ok(Box::new(body))
     }
 }
 
@@ -624,7 +677,8 @@ static PINNACLE_CONNECTOR_INFO: ConnectorInfo = ConnectorInfo {
     integration_status: enums::ConnectorIntegrationStatus::Live,
 };
 
-static PINNACLE_SUPPORTED_WEBHOOK_FLOWS: [enums::EventClass; 0] = [];
+static PINNACLE_SUPPORTED_WEBHOOK_FLOWS: [enums::EventClass; 2] =
+    [enums::EventClass::Payments, enums::EventClass::Refunds];
 
 impl ConnectorSpecifications for Pinnacle {
     fn get_connector_about(&self) -> Option<&'static ConnectorInfo> {

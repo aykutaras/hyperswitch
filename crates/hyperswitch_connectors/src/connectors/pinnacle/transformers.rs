@@ -1,6 +1,6 @@
 use common_enums::enums;
 use common_utils::{pii::Email, request::Method, types::StringMajorUnit};
-use error_stack::ResultExt;
+use error_stack::{report, ResultExt};
 use hyperswitch_domain_models::{
     payment_method_data::PaymentMethodData,
     router_data::{ConnectorAuthType, ErrorResponse, RouterData},
@@ -353,4 +353,120 @@ impl PinnacleErrorResponse {
             None => self.message.clone(),
         }
     }
+}
+
+/// Body of payment-api's `transaction.status_changed` notification: the transaction's
+/// own fields at the top level, the same ones a status lookup returns, beside
+/// `transaction` and `customerInfo` copies we do not need. Serialised back for the
+/// payment or refund flow to read, so the names have to stay as they arrive.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnacleWebhookBody {
+    uuid: String,
+    status: PinnacleTransactionStatus,
+    operation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reference_no: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_code: Option<String>,
+}
+
+/// payment-api's operation for a refund. Everything else is a payment.
+const REFUND_OPERATION: &str = "REFUND";
+
+impl PinnacleWebhookBody {
+    fn is_refund(&self) -> bool {
+        self.operation == REFUND_OPERATION
+    }
+
+    pub fn event_type(&self) -> api_models::webhooks::IncomingWebhookEvent {
+        use api_models::webhooks::IncomingWebhookEvent;
+
+        let final_status = matches!(
+            self.status,
+            PinnacleTransactionStatus::Declined
+                | PinnacleTransactionStatus::Cancelled
+                | PinnacleTransactionStatus::Error
+        );
+        match (self.is_refund(), self.status, final_status) {
+            (true, PinnacleTransactionStatus::Approved, _) => IncomingWebhookEvent::RefundSuccess,
+            (true, _, true) => IncomingWebhookEvent::RefundFailure,
+            (false, PinnacleTransactionStatus::Approved, _) => {
+                IncomingWebhookEvent::PaymentIntentSuccess
+            }
+            (false, _, true) => IncomingWebhookEvent::PaymentIntentFailure,
+            // PENDING and WAITING say nothing new. payment-api does not notify while a
+            // 3DS payment is still waiting: its listener skips the `3D` operation.
+            (true, _, false) => IncomingWebhookEvent::EventNotSupported,
+            (false, _, false) => IncomingWebhookEvent::PaymentIntentProcessing,
+        }
+    }
+
+    /// By the reference we sent, never by `uuid`, which a refund shares with its payment.
+    pub fn object_reference_id(
+        &self,
+    ) -> Result<api_models::webhooks::ObjectReferenceId, error_stack::Report<errors::ConnectorError>>
+    {
+        let reference = self
+            .reference_no
+            .clone()
+            .ok_or_else(utils::missing_field_err("referenceNo"))?;
+        Ok(if self.is_refund() {
+            api_models::webhooks::ObjectReferenceId::RefundId(
+                api_models::webhooks::RefundIdType::RefundId(reference),
+            )
+        } else {
+            api_models::webhooks::ObjectReferenceId::PaymentId(
+                api_models::payments::PaymentIdType::PaymentAttemptId(reference),
+            )
+        })
+    }
+}
+
+/// What payment-api signs: six fields of the payload plus the request id and timestamp
+/// from the headers, as JSON with the keys sorted and an HMAC-SHA256 over it
+/// (`notification-module`, `IpnSignature::generate`). The values are taken from the body
+/// as they arrived, so a number stays a number and a string stays a string. The keys are
+/// inserted already sorted, so the result does not depend on how serde_json orders a map.
+/// A non-ASCII value would not match, because PHP escapes those and serde_json does not;
+/// none of the signed fields carries one today.
+pub fn webhook_signature_message(
+    body: &serde_json::Value,
+    request_id: &str,
+    timestamp: i64,
+) -> Result<Vec<u8>, error_stack::Report<errors::ConnectorError>> {
+    fn signed_field(
+        body: &serde_json::Value,
+        field: &str,
+    ) -> Result<serde_json::Value, error_stack::Report<errors::ConnectorError>> {
+        body.get(field).cloned().ok_or_else(|| {
+            report!(errors::ConnectorError::WebhookSourceVerificationFailed).attach_printable(
+                format!("signed field {field} missing from the webhook body"),
+            )
+        })
+    }
+
+    let mut signed = serde_json::Map::new();
+    signed.insert("amount".to_string(), signed_field(body, "amount")?);
+    signed.insert("currency".to_string(), signed_field(body, "currency")?);
+    signed.insert(
+        "referenceNo".to_string(),
+        signed_field(body, "referenceNo")?,
+    );
+    signed.insert(
+        "requestId".to_string(),
+        serde_json::Value::String(request_id.to_string()),
+    );
+    signed.insert("returnUrl".to_string(), signed_field(body, "returnUrl")?);
+    signed.insert("status".to_string(), signed_field(body, "status")?);
+    signed.insert(
+        "timestamp".to_string(),
+        serde_json::Value::Number(timestamp.into()),
+    );
+    signed.insert("uuid".to_string(), signed_field(body, "uuid")?);
+
+    serde_json::to_vec(&serde_json::Value::Object(signed))
+        .change_context(errors::ConnectorError::WebhookSourceVerificationFailed)
 }
