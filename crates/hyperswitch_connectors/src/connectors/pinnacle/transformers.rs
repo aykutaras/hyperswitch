@@ -168,6 +168,8 @@ impl<F, T> TryFrom<ResponseRouterData<F, PinnacleTransactionResponse, T, Payment
             }
             // A status lookup carries no redirectUrl. While payment-api still waits on 3DS,
             // the customer has not finished it: the payment still needs their action.
+            // payment-api never gives up on one of these, so it stays WAITING for good if
+            // the customer never comes back; nothing here or there turns it into a failure.
             PinnacleTransactionStatus::Waiting
                 if item.data.status == enums::AttemptStatus::AuthenticationPending =>
             {
