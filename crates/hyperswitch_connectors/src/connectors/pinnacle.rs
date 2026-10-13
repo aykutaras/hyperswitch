@@ -61,11 +61,17 @@ impl Pinnacle {
         }
     }
 
-    fn api_url(&self, connectors: &Connectors, path: &str) -> String {
-        format!(
-            "{}/v1/{path}",
-            self.base_url(connectors).trim_end_matches('/')
-        )
+    /// A payment-api endpoint for one merchant connector account: on the
+    /// white-label tenant its metadata names, else on the deployment's default
+    /// (`pinnacle::tenant_base_url`).
+    fn api_url(
+        &self,
+        connectors: &Connectors,
+        connector_meta_data: &Option<common_utils::pii::SecretSerdeValue>,
+        path: &str,
+    ) -> CustomResult<String, errors::ConnectorError> {
+        let base_url = pinnacle::tenant_base_url(self.base_url(connectors), connector_meta_data)?;
+        Ok(format!("{}/v1/{path}", base_url.trim_end_matches('/')))
     }
 }
 
@@ -217,10 +223,10 @@ impl ConnectorIntegration<Authorize, PaymentsAuthorizeData, PaymentsResponseData
 
     fn get_url(
         &self,
-        _req: &PaymentsAuthorizeRouterData,
+        req: &PaymentsAuthorizeRouterData,
         connectors: &Connectors,
     ) -> CustomResult<String, errors::ConnectorError> {
-        Ok(self.api_url(connectors, "payment"))
+        self.api_url(connectors, &req.connector_meta_data, "payment")
     }
 
     fn get_request_body(
@@ -314,7 +320,7 @@ impl ConnectorIntegration<PSync, PaymentsSyncData, PaymentsResponseData> for Pin
         // transaction carrying it.
         Ok(format!(
             "{}?referenceNo={}",
-            self.api_url(connectors, "payment/status"),
+            self.api_url(connectors, &req.connector_meta_data, "payment/status")?,
             urlencoding::encode(&req.connector_request_reference_id)
         ))
     }
@@ -382,10 +388,10 @@ impl ConnectorIntegration<Execute, RefundsData, RefundsResponseData> for Pinnacl
 
     fn get_url(
         &self,
-        _req: &RefundsRouterData<Execute>,
+        req: &RefundsRouterData<Execute>,
         connectors: &Connectors,
     ) -> CustomResult<String, errors::ConnectorError> {
-        Ok(self.api_url(connectors, "refund"))
+        self.api_url(connectors, &req.connector_meta_data, "refund")
     }
 
     fn get_request_body(
@@ -474,7 +480,7 @@ impl ConnectorIntegration<RSync, RefundsData, RefundsResponseData> for Pinnacle 
         // looked up by the reference it was created with, which is unique per refund.
         Ok(format!(
             "{}?referenceNo={}",
-            self.api_url(connectors, "payment/status"),
+            self.api_url(connectors, &req.connector_meta_data, "payment/status")?,
             urlencoding::encode(&req.request.refund_id)
         ))
     }

@@ -8566,3 +8566,9 @@ key1="Secret API Key"
 api_key = "API Key"
 [pinnacle.connector_webhook_details]
 merchant_secret="Source verification key"
+[pinnacle.metadata.platform_url]
+name = "platform_url"
+label = "Platform URL (white-label tenant)"
+placeholder = "Empty: https://api.prod.pinnacle-soft.io"
+required = false
+type = "Text"
