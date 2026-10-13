@@ -88,7 +88,9 @@ impl HealthCheckInterface for app::SessionState {
         &self,
     ) -> CustomResult<HealthState, errors::HealthCheckLockerError> {
         let locker = &self.conf.locker;
-        if !locker.mock_locker {
+        // With the locker disabled nothing calls it, so it is not a dependency
+        // of this deployment and must not make the router report unready.
+        if !locker.mock_locker && locker.locker_enabled {
             let mut url = locker.host.to_owned();
             url.push_str(consts::LOCKER_HEALTH_CALL_PATH);
             let request = services::Request::new(services::Method::Get, &url);
