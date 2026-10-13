@@ -520,6 +520,9 @@ impl ConnectorAuthTypeAndMetadataValidation<'_> {
             }
             api_enums::Connector::Pinnacle => {
                 pinnacle::transformers::PinnacleAuthType::try_from(self.auth_type)?;
+                pinnacle::transformers::PinnacleConnectorMetadata::try_from(
+                    self.connector_meta_data,
+                )?;
                 Ok(())
             }
             api_enums::Connector::Silverflow => {

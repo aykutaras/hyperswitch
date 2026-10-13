@@ -127,6 +127,82 @@ impl TryFrom<&ConnectorAuthType> for PinnacleAuthType {
     }
 }
 
+/// Per-account settings from the connector's metadata (the dashboard's
+/// connector form). payment-api resolves the white-label tenant from the host
+/// it is called on, so `platform_url` is how an account picks its tenant, the
+/// field Archipel uses for its per-account endpoint. Unset, the deployment's
+/// `connectors.pinnacle.base_url` is used.
+#[derive(Debug, Default, Deserialize)]
+pub struct PinnacleConnectorMetadata {
+    pub platform_url: Option<String>,
+}
+
+impl TryFrom<&Option<common_utils::pii::SecretSerdeValue>> for PinnacleConnectorMetadata {
+    type Error = error_stack::Report<errors::ConnectorError>;
+    /// Also checks the URL's form, so a typo is refused when the account is
+    /// saved rather than on its first payment.
+    fn try_from(
+        connector_metadata: &Option<common_utils::pii::SecretSerdeValue>,
+    ) -> Result<Self, Self::Error> {
+        let metadata: Self = match connector_metadata {
+            None => Self::default(),
+            Some(_) => utils::to_connector_meta_from_secret(connector_metadata.clone())
+                .change_context(errors::ConnectorError::InvalidConnectorConfig {
+                    config: "metadata",
+                })?,
+        };
+        if let Some(url) = metadata.platform_url() {
+            check_platform_url(url)?;
+        }
+        Ok(metadata)
+    }
+}
+
+impl PinnacleConnectorMetadata {
+    fn platform_url(&self) -> Option<&str> {
+        self.platform_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+    }
+}
+
+/// An https URL naming a host and nothing the connector adds itself: no
+/// credentials, query, fragment or path (requests go to `/v1/...`).
+fn check_platform_url(raw: &str) -> Result<(), error_stack::Report<errors::ConnectorError>> {
+    let invalid = || {
+        report!(errors::ConnectorError::InvalidConnectorConfig {
+            config: "metadata.platform_url (an https URL with no path, e.g. https://api.prod.pinnacle-soft.io)",
+        })
+    };
+    let url = url::Url::parse(raw).map_err(|_| invalid())?;
+    let well_formed = url.scheme() == "https"
+        && url.host_str().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && url.path() == "/";
+    if well_formed {
+        Ok(())
+    } else {
+        Err(invalid())
+    }
+}
+
+/// The base URL requests for this account go to: its own `platform_url`, else
+/// the deployment's default.
+pub fn tenant_base_url(
+    default_base_url: &str,
+    connector_metadata: &Option<common_utils::pii::SecretSerdeValue>,
+) -> Result<String, error_stack::Report<errors::ConnectorError>> {
+    let metadata = PinnacleConnectorMetadata::try_from(connector_metadata)?;
+    Ok(metadata
+        .platform_url()
+        .unwrap_or(default_base_url)
+        .to_string())
+}
+
 /// payment-api's transaction status. `DECLINED`, `CANCELLED` and `ERROR` are final.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
@@ -469,4 +545,59 @@ pub fn webhook_signature_message(
 
     serde_json::to_vec(&serde_json::Value::Object(signed))
         .change_context(errors::ConnectorError::WebhookSourceVerificationFailed)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use hyperswitch_masking::Secret;
+
+    use super::tenant_base_url;
+
+    const DEFAULT: &str = "https://api.prod.pinnacle-soft.io";
+
+    fn metadata(platform_url: &str) -> Option<common_utils::pii::SecretSerdeValue> {
+        Some(Secret::new(
+            serde_json::json!({ "platform_url": platform_url }),
+        ))
+    }
+
+    #[test]
+    fn an_account_without_metadata_uses_the_default() {
+        assert_eq!(tenant_base_url(DEFAULT, &None).unwrap(), DEFAULT);
+    }
+
+    #[test]
+    fn an_account_without_a_platform_url_uses_the_default() {
+        let metadata = Some(Secret::new(serde_json::json!({})));
+        assert_eq!(tenant_base_url(DEFAULT, &metadata).unwrap(), DEFAULT);
+    }
+
+    #[test]
+    fn an_empty_platform_url_uses_the_default() {
+        assert_eq!(tenant_base_url(DEFAULT, &metadata("  ")).unwrap(), DEFAULT);
+    }
+
+    #[test]
+    fn an_accounts_platform_url_is_used() {
+        assert_eq!(
+            tenant_base_url(DEFAULT, &metadata("https://api.brand.example/")).unwrap(),
+            "https://api.brand.example/"
+        );
+    }
+
+    #[test]
+    fn plain_http_is_refused() {
+        assert!(tenant_base_url(DEFAULT, &metadata("http://api.brand.example")).is_err());
+    }
+
+    #[test]
+    fn a_path_is_refused() {
+        assert!(tenant_base_url(DEFAULT, &metadata("https://api.brand.example/v1")).is_err());
+    }
+
+    #[test]
+    fn credentials_in_the_url_are_refused() {
+        assert!(tenant_base_url(DEFAULT, &metadata("https://user:pw@api.brand.example")).is_err());
+    }
 }
