@@ -605,7 +605,20 @@ impl webhooks::IncomingWebhook for Paytech {
 
 /// The payment method types the connector maps to a PayTech `paymentMethod`
 /// (`PaytechPaymentMethod`). PayTech decides per shop which of them are on.
-const PAYTECH_PAYMENT_METHOD_TYPES: [(enums::PaymentMethod, enums::PaymentMethodType); 48] = [
+/// Card redirect, Apple Pay and Google Pay all open PayTech's card page.
+const PAYTECH_PAYMENT_METHOD_TYPES: [(enums::PaymentMethod, enums::PaymentMethodType); 51] = [
+    (
+        enums::PaymentMethod::CardRedirect,
+        enums::PaymentMethodType::CardRedirect,
+    ),
+    (
+        enums::PaymentMethod::Wallet,
+        enums::PaymentMethodType::ApplePay,
+    ),
+    (
+        enums::PaymentMethod::Wallet,
+        enums::PaymentMethodType::GooglePay,
+    ),
     (
         enums::PaymentMethod::Wallet,
         enums::PaymentMethodType::AliPay,
@@ -817,7 +830,7 @@ static PAYTECH_SUPPORTED_PAYMENT_METHODS: LazyLock<SupportedPaymentMethods> = La
 
 static PAYTECH_CONNECTOR_INFO: ConnectorInfo = ConnectorInfo {
     display_name: "PayTech",
-    description: "pay.tech's PayPlane engine: local and alternative payment methods through its checkout page, and refunds",
+    description: "pay.tech's PayPlane engine: cards, Apple Pay, Google Pay and local payment methods through its checkout page, and refunds",
     connector_type: enums::HyperswitchConnectorCategory::PaymentGateway,
     integration_status: enums::ConnectorIntegrationStatus::Alpha,
 };

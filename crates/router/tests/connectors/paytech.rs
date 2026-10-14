@@ -3,7 +3,9 @@
 //! They call the real sandbox, so they need a shop's API key:
 //! `CONNECTOR_AUTH_FILE_PATH` must point at a TOML file with
 //! `[paytech]` / `api_key = "<sandbox Shop API Key>"`, and the shop must have
-//! iDEAL enabled. Which methods a shop has is PayTech's configuration.
+//! cards and iDEAL enabled. Which methods a shop has is PayTech's configuration.
+//! On the card page, PayTech's test cards decide the outcome: 4000 0000 0000
+//! 0002 succeeds with 3DS, 4242 4242 4242 4242 is declined with 3DS.
 //!
 //! Every method this connector sends finishes on PayTech's checkout page, which
 //! needs a browser, so these tests stop at the redirect. Completing a payment,
@@ -14,7 +16,7 @@ use std::str::FromStr;
 use common_utils::{pii::Email, types::MinorUnit};
 use hyperswitch_domain_models::{
     address::{Address, AddressDetails, PhoneDetails},
-    payment_method_data::{BankRedirectData, Card, PaymentMethodData},
+    payment_method_data::{BankRedirectData, Card, CardRedirectData, PaymentMethodData},
 };
 use hyperswitch_masking::Secret;
 use router::types::{self, api, storage::enums, PaymentAddress};
@@ -144,6 +146,16 @@ async fn should_keep_a_payment_at_the_checkout_page_open_on_sync() {
 }
 
 #[actix_web::test]
+async fn should_send_a_card_payment_to_paytechs_card_page() {
+    let card_redirect = PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {});
+    let response = CONNECTOR
+        .make_payment(payment_data(card_redirect), get_default_payment_info())
+        .await
+        .expect("Payment response");
+    assert_eq!(response.status, enums::AttemptStatus::AuthenticationPending);
+}
+
+#[actix_web::test]
 async fn should_refuse_a_card_without_calling_paytech() {
     let card = PaymentMethodData::Card(Card {
         card_number: cards::CardNumber::from_str("4000000000000002").unwrap(),
@@ -152,7 +164,7 @@ async fn should_refuse_a_card_without_calling_paytech() {
     let error = CONNECTOR
         .make_payment(payment_data(card), get_default_payment_info())
         .await
-        .expect_err("cards go through the pinnacle connector");
+        .expect_err("a card typed into Hyperswitch goes through the pinnacle connector");
     assert!(matches!(
         error.current_context(),
         router::core::errors::ConnectorError::NotImplemented(_)

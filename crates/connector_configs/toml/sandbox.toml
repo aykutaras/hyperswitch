@@ -9492,6 +9492,14 @@ required = false
 type = "Text"
 
 [paytech]
+[[paytech.card_redirect]]
+payment_method_type = "card_redirect"
+[[paytech.wallet]]
+payment_method_type = "apple_pay"
+payment_experience = "redirect_to_url"
+[[paytech.wallet]]
+payment_method_type = "google_pay"
+payment_experience = "redirect_to_url"
 [[paytech.wallet]]
 payment_method_type = "ali_pay"
 [[paytech.wallet]]
