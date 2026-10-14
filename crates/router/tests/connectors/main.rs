@@ -103,6 +103,7 @@ mod payone;
 mod paypal;
 mod paysafe;
 mod paystack;
+mod paytech;
 mod paytm;
 mod payu;
 mod peachpayments;

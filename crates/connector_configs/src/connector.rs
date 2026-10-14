@@ -391,6 +391,7 @@ pub struct ConnectorConfig {
     #[cfg(feature = "payouts")]
     pub paypal_payout: Option<ConnectorTomlConfig>,
     pub paystack: Option<ConnectorTomlConfig>,
+    pub paytech: Option<ConnectorTomlConfig>,
     pub paytm: Option<ConnectorTomlConfig>,
     pub payu: Option<ConnectorTomlConfig>,
     pub peachpayments: Option<ConnectorTomlConfig>,
@@ -691,6 +692,7 @@ impl ConnectorConfig {
             Connector::Santander => Ok(connector_data.santander),
             Connector::Shift4 => Ok(connector_data.shift4),
             Connector::Nsure => Ok(connector_data.nsure),
+            Connector::Paytech => Ok(connector_data.paytech),
             Connector::Pinnacle => Ok(connector_data.pinnacle),
             Connector::Signifyd => Ok(connector_data.signifyd),
             Connector::Silverflow => Ok(connector_data.silverflow),
