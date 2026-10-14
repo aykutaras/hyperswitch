@@ -2817,7 +2817,6 @@ default_imp_for_connector_redirect_response!(
     connectors::Payjustnowinstore,
     connectors::Payload,
     connectors::Paystack,
-    connectors::Paytech,
     connectors::Paytm,
     connectors::Payone,
     connectors::Payu,
