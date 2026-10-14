@@ -7961,5 +7961,109 @@ required = false
 type = "Text"
 
 [paytech]
+[[paytech.wallet]]
+payment_method_type = "ali_pay"
+[[paytech.wallet]]
+payment_method_type = "cashapp"
+[[paytech.wallet]]
+payment_method_type = "dana"
+[[paytech.wallet]]
+payment_method_type = "gcash"
+[[paytech.wallet]]
+payment_method_type = "go_pay"
+[[paytech.wallet]]
+payment_method_type = "kakao_pay"
+[[paytech.wallet]]
+payment_method_type = "mb_way"
+[[paytech.wallet]]
+payment_method_type = "mifinity"
+[[paytech.wallet]]
+payment_method_type = "momo"
+[[paytech.wallet]]
+payment_method_type = "paypal"
+[[paytech.wallet]]
+payment_method_type = "revolut_pay"
+[[paytech.wallet]]
+payment_method_type = "skrill"
+[[paytech.wallet]]
+payment_method_type = "swish"
+[[paytech.wallet]]
+payment_method_type = "touch_n_go"
+[[paytech.wallet]]
+payment_method_type = "twint"
+[[paytech.wallet]]
+payment_method_type = "vipps"
+[[paytech.wallet]]
+payment_method_type = "we_chat_pay"
+[[paytech.bank_redirect]]
+payment_method_type = "bancontact_card"
+[[paytech.bank_redirect]]
+payment_method_type = "bizum"
+[[paytech.bank_redirect]]
+payment_method_type = "blik"
+[[paytech.bank_redirect]]
+payment_method_type = "eft"
+[[paytech.bank_redirect]]
+payment_method_type = "eps"
+[[paytech.bank_redirect]]
+payment_method_type = "giropay"
+[[paytech.bank_redirect]]
+payment_method_type = "ideal"
+[[paytech.bank_redirect]]
+payment_method_type = "interac"
+[[paytech.bank_redirect]]
+payment_method_type = "online_banking_fpx"
+[[paytech.bank_redirect]]
+payment_method_type = "open_banking"
+[[paytech.bank_redirect]]
+payment_method_type = "przelewy24"
+[[paytech.bank_redirect]]
+payment_method_type = "sofort"
+[[paytech.bank_redirect]]
+payment_method_type = "trustly"
+[[paytech.bank_transfer]]
+payment_method_type = "ach"
+[[paytech.bank_transfer]]
+payment_method_type = "multibanco"
+[[paytech.bank_transfer]]
+payment_method_type = "pix"
+[[paytech.bank_transfer]]
+payment_method_type = "pse"
+[[paytech.bank_transfer]]
+payment_method_type = "sepa_bank_transfer"
+[[paytech.voucher]]
+payment_method_type = "alfamart"
+[[paytech.voucher]]
+payment_method_type = "boleto"
+[[paytech.voucher]]
+payment_method_type = "efecty"
+[[paytech.voucher]]
+payment_method_type = "oxxo"
+[[paytech.voucher]]
+payment_method_type = "pago_efectivo"
+[[paytech.real_time_payment]]
+payment_method_type = "duit_now"
+[[paytech.real_time_payment]]
+payment_method_type = "prompt_pay"
+[[paytech.real_time_payment]]
+payment_method_type = "qris"
+[[paytech.pay_later]]
+payment_method_type = "klarna"
+[[paytech.upi]]
+payment_method_type = "upi_collect"
+[[paytech.upi]]
+payment_method_type = "upi_intent"
+[[paytech.gift_card]]
+payment_method_type = "pay_safe_card"
+[[paytech.crypto]]
+payment_method_type = "crypto_currency"
 [paytech.connector_auth.HeaderKey]
-api_key = "API Key"
+api_key = "Shop API Key"
+[paytech.connector_webhook_details]
+merchant_secret = "Shop Signing Key"
+[paytech.metadata.platform_url]
+name = "platform_url"
+label = "Platform URL (white-label brand)"
+placeholder = "Empty: https://engine.pay.tech"
+required = false
+type = "Text"
