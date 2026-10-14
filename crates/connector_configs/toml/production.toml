@@ -7959,3 +7959,7 @@ label = "Platform URL (white-label tenant)"
 placeholder = "Empty: https://api.prod.pinnacle-soft.io"
 required = false
 type = "Text"
+
+[paytech]
+[paytech.connector_auth.HeaderKey]
+api_key = "API Key"
