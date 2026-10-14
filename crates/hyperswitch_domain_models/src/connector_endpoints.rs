@@ -114,6 +114,7 @@ pub struct Connectors {
     pub paypal: ConnectorParams,
     pub paysafe: ConnectorParams,
     pub paystack: ConnectorParams,
+    pub paytech: ConnectorParams,
     pub paytm: ConnectorParams,
     pub payu: ConnectorParams,
     pub peachpayments: ConnectorParams,

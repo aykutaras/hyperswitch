@@ -109,6 +109,7 @@ pub struct ConnectorAuthentication {
     pub paypal: Option<BodyKey>,
     pub paysafe: Option<BodyKey>,
     pub paystack: Option<HeaderKey>,
+    pub paytech: Option<HeaderKey>,
     pub paytm: Option<HeaderKey>,
     pub payconex: Option<BodyKey>,
     pub payu: Option<BodyKey>,

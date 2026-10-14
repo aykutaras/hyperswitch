@@ -142,6 +142,7 @@ impl ForeignTryFrom<api_enums::Connector> for euclid::enums::RoutableConnectors 
             api_enums::Connector::Revolv3 => Self::Revolv3,
             api_enums::Connector::Santander => Self::Santander,
             api_enums::Connector::Shift4 => Self::Shift4,
+            api_enums::Connector::Paytech => Self::Paytech,
             api_enums::Connector::Pinnacle => Self::Pinnacle,
             api_enums::Connector::Zift => Self::Zift,
             api_enums::Connector::Silverflow => Self::Silverflow,
