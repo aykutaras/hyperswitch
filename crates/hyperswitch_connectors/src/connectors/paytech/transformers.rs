@@ -4,8 +4,8 @@ use error_stack::{report, ResultExt};
 use hyperswitch_domain_models::{
     address::PhoneDetails,
     payment_method_data::{
-        BankRedirectData, BankTransferData, GiftCardData, PayLaterData, PaymentMethodData,
-        RealTimePaymentData, UpiData, VoucherData, WalletData,
+        BankRedirectData, BankTransferData, CardRedirectData, GiftCardData, PayLaterData,
+        PaymentMethodData, RealTimePaymentData, UpiData, VoucherData, WalletData,
     },
     router_data::{ConnectorAuthType, ErrorResponse, RouterData},
     router_request_types::ResponseId,
@@ -170,8 +170,9 @@ impl PaytechPaymentState {
 }
 
 /// The `paymentMethod` values this connector sends: the ones with a payment
-/// method type of their own in Hyperswitch. The other non-card methods PayTech
-/// lists have none, and cards go through the pinnacle connector.
+/// method type of their own in Hyperswitch, plus `BASIC_CARD` for PayTech's
+/// card page. The other methods PayTech lists have no Hyperswitch type. A card
+/// typed into Hyperswitch's own checkout goes through the pinnacle connector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum PaytechPaymentMethod {
@@ -179,6 +180,7 @@ pub enum PaytechPaymentMethod {
     Alfamart,
     Alipay,
     Bancontact,
+    BasicCard,
     Bizum,
     Blik,
     Boleto,
@@ -228,7 +230,16 @@ impl TryFrom<&PaymentMethodData> for PaytechPaymentMethod {
     type Error = error_stack::Report<errors::ConnectorError>;
     fn try_from(payment_method_data: &PaymentMethodData) -> Result<Self, Self::Error> {
         let method = match payment_method_data {
+            // PayTech's card page, opened with BASIC_CARD and no card details: the
+            // customer enters a card there, or pays with the Apple Pay or Google Pay
+            // button it carries (PayTech's Apple Pay and Google Pay docs).
+            PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect { .. }) => {
+                Self::BasicCard
+            }
             PaymentMethodData::Wallet(wallet) => match wallet {
+                WalletData::ApplePayRedirect { .. } | WalletData::GooglePayRedirect { .. } => {
+                    Self::BasicCard
+                }
                 WalletData::AliPayQr { .. } | WalletData::AliPayRedirect { .. } => Self::Alipay,
                 WalletData::CashappQr { .. } => Self::Cashapp,
                 WalletData::DanaRedirect { .. } => Self::Dana,
@@ -895,9 +906,29 @@ mod tests {
     }
 
     #[test]
-    fn a_card_is_not_paytechs_to_take() {
+    fn a_card_typed_into_hyperswitch_is_not_paytechs_to_take() {
         let card = PaymentMethodData::Card(Default::default());
         assert!(PaytechPaymentMethod::try_from(&card).is_err());
+    }
+
+    #[test]
+    fn cards_apple_pay_and_google_pay_open_paytechs_card_page() {
+        use hyperswitch_domain_models::payment_method_data::{
+            ApplePayRedirectData, GooglePayRedirectData,
+        };
+        let redirects = [
+            PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {}),
+            PaymentMethodData::Wallet(WalletData::ApplePayRedirect(Box::new(
+                ApplePayRedirectData {},
+            ))),
+            PaymentMethodData::Wallet(WalletData::GooglePayRedirect(Box::new(
+                GooglePayRedirectData {},
+            ))),
+        ];
+        for payment_method_data in redirects {
+            let method = PaytechPaymentMethod::try_from(&payment_method_data).unwrap();
+            assert_eq!(serde_json::to_value(method).unwrap(), "BASIC_CARD");
+        }
     }
 
     #[test]
