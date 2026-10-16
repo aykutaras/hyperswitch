@@ -7206,6 +7206,8 @@ macro_rules! default_imp_for_po_frm {
 
 #[cfg(feature = "frm")]
 default_imp_for_po_frm!(
+    connectors::Paytech,
+    connectors::Pinnacle,
     connectors::Vgs,
     connectors::AbsaSanlam,
     connectors::Aci,
@@ -13741,6 +13743,8 @@ macro_rules! default_imp_for_refund_void_post_refund {
 }
 
 default_imp_for_refund_void_post_refund!(
+    connectors::Paytech,
+    connectors::Pinnacle,
     connectors::AbsaSanlam,
     connectors::Aci,
     connectors::Adyen,

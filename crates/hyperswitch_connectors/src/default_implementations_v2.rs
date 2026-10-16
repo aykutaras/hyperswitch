@@ -4980,6 +4980,8 @@ macro_rules! default_imp_for_new_connector_integration_frm_payout {
 
 #[cfg(feature = "frm")]
 default_imp_for_new_connector_integration_frm_payout!(
+    connectors::Paytech,
+    connectors::Pinnacle,
     connectors::AbsaSanlam,
     connectors::Imerchantsolutions,
     connectors::Ilixium,
