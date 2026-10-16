@@ -225,6 +225,16 @@ impl HealthCheckInterface for app::SessionState {
     async fn health_check_unified_connector_service(
         &self,
     ) -> CustomResult<HealthState, errors::HealthCheckUnifiedConnectorServiceError> {
+        // Payments go through UCS only when check_ucs_availability says so: the client
+        // exists and `ucs_enabled` is set. The client always exists once its config section
+        // does, so without this a deployment that runs no UCS reports unready.
+        if crate::core::unified_connector_service::check_ucs_availability(self).await
+            == common_enums::UcsAvailability::Disabled
+        {
+            logger::debug!("Unified Connector Service is not enabled; health check skipped");
+            return Ok(HealthState::NotApplicable);
+        }
+
         // TODO: remove this fallback once `health_check.proto` is compiled unconditionally.
         //
         // The `grpc.health.v1` stubs are generated inside the `dynamic_routing` block of
