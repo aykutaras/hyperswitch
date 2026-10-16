@@ -221,6 +221,12 @@ pub async fn get_batches(
         }
     };
 
+    // redis-rs reads an empty stream as no entries, where fred raised the error above
+    if response.values().all(Vec::is_empty) {
+        logger::debug!("No batches processed as stream is empty");
+        return Ok(Vec::new());
+    }
+
     metrics::BATCHES_CONSUMED.add(1, &[]);
 
     // StreamReadResult: stream key → Vec<(entry_id, HashMap<String, RedisValue>)>
