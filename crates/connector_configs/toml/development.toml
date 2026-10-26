@@ -9632,3 +9632,49 @@ label = "Platform URL (white-label brand)"
 placeholder = "Empty: https://engine-sandbox.pay.tech"
 required = false
 type = "Text"
+
+[saltedge]
+[[saltedge.bank_redirect]]
+payment_method_type = "open_banking"
+[saltedge.connector_auth.SignatureKey]
+api_key = "App-id"
+key1 = "Secret"
+api_secret = "Private key (RSA, PEM; its public key goes to Salt Edge)"
+[saltedge.metadata.creditor_name]
+name = "creditor_name"
+label = "Creditor name (holder of the account paid)"
+placeholder = "Enter the receiving account's holder name"
+required = true
+type = "Text"
+[saltedge.metadata.creditor_iban]
+name = "creditor_iban"
+label = "Creditor IBAN (EUR payments)"
+placeholder = "Enter the IBAN that EUR payments are paid to"
+required = false
+type = "Text"
+[saltedge.metadata.creditor_sort_code]
+name = "creditor_sort_code"
+label = "Creditor sort code (GBP payments)"
+placeholder = "Enter the sort code that GBP payments are paid to"
+required = false
+type = "Text"
+[saltedge.metadata.creditor_account_number]
+name = "creditor_account_number"
+label = "Creditor account number (GBP payments)"
+placeholder = "Enter the account number that GBP payments are paid to"
+required = false
+type = "Text"
+[saltedge.metadata.eur_scheme]
+name = "eur_scheme"
+label = "Scheme for EUR payments"
+placeholder = "Empty: SEPA_INSTANT"
+required = false
+type = "Select"
+options = ["SEPA_INSTANT", "SEPA"]
+[saltedge.metadata.test_banks]
+name = "test_banks"
+label = "Salt Edge's test banks (only for an application in Test status)"
+placeholder = "Empty: hide"
+required = false
+type = "Select"
+options = ["hide", "show"]

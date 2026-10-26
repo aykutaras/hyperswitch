@@ -179,6 +179,7 @@ redsys.base_url = "https://sis.redsys.es"
 revolv3.base_url = "https://api.revolv3.com"
 riskified.base_url = "https://wh.riskified.com/api/"
 saferpay.base_url = "https://www.saferpay.com/api"
+saltedge.base_url = "https://www.saltedge.com"
 sanlam_payshield.base_url = "live"
 santander.base_url = "https://trust-pix.santander.com.br/"
 santander.secondary_base_url = "https://trust-open.api.santander.com.br/"
@@ -754,6 +755,9 @@ upi_intent = { country = "IN", currency = "INR" }
 [pm_filters.hyperpg]
 credit = { currency = "INR,USD,GBP,EUR" }
 debit = { currency = "INR,USD,GBP,EUR" }
+
+[pm_filters.saltedge]
+open_banking = { currency = "GBP,EUR" }
 
 [pm_filters.truelayer]
 open_banking = { currency = "GBP,EUR" }
