@@ -2028,6 +2028,11 @@ fn get_bank_redirect_required_fields(
             enums::PaymentMethodType::OpenBanking,
             connectors(vec![
                 (Connector::Volt, fields(vec![], billing_name(), vec![])),
+                // Salt Edge creates its customer from the payer's email.
+                (
+                    Connector::Saltedge,
+                    fields(vec![], vec![RequiredField::Email], vec![]),
+                ),
                 (
                     Connector::Truelayer,
                     fields(

@@ -128,6 +128,7 @@ pub mod redsys;
 pub mod revolv3;
 pub mod riskified;
 pub mod saferpay;
+pub mod saltedge;
 pub mod sanlam_payshield;
 pub mod santander;
 pub mod shift4;
@@ -200,12 +201,12 @@ pub use self::{
     paytech::Paytech, paytm::Paytm, payu::Payu, peachpayments::Peachpayments, phonepe::Phonepe,
     pinnacle::Pinnacle, placetopay::Placetopay, plaid::Plaid, powertranz::Powertranz,
     prophetpay::Prophetpay, rapyd::Rapyd, razorpay::Razorpay, recurly::Recurly, redsys::Redsys,
-    revolv3::Revolv3, riskified::Riskified, saferpay::Saferpay, sanlam_payshield::SanlamPayshield,
-    santander::Santander, shift4::Shift4, sift::Sift, signifyd::Signifyd, silverflow::Silverflow,
-    square::Square, stax::Stax, stripe::Stripe, stripebilling::Stripebilling, taxjar::Taxjar,
-    tesouro::Tesouro, threedsecureio::Threedsecureio, thunes::Thunes, tokenex::Tokenex,
-    tokenio::Tokenio, truelayer::Truelayer, trustly::Trustly, trustpay::Trustpay,
-    trustpayments::Trustpayments, tsys::Tsys, tsys_transit::TsysTransit,
+    revolv3::Revolv3, riskified::Riskified, saferpay::Saferpay, saltedge::Saltedge,
+    sanlam_payshield::SanlamPayshield, santander::Santander, shift4::Shift4, sift::Sift,
+    signifyd::Signifyd, silverflow::Silverflow, square::Square, stax::Stax, stripe::Stripe,
+    stripebilling::Stripebilling, taxjar::Taxjar, tesouro::Tesouro, threedsecureio::Threedsecureio,
+    thunes::Thunes, tokenex::Tokenex, tokenio::Tokenio, truelayer::Truelayer, trustly::Trustly,
+    trustpay::Trustpay, trustpayments::Trustpayments, tsys::Tsys, tsys_transit::TsysTransit,
     unified_authentication_service::UnifiedAuthenticationService, vgs::Vgs, volt::Volt,
     wellsfargo::Wellsfargo, wellsfargopayout::Wellsfargopayout, wise::Wise, worldline::Worldline,
     worldpay::Worldpay, worldpaymodular::Worldpaymodular, worldpayraft::Worldpayraft,
