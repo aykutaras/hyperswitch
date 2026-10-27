@@ -226,7 +226,11 @@ impl ConnectorIntegration<Authorize, PaymentsAuthorizeData, PaymentsResponseData
         req: &PaymentsAuthorizeRouterData,
         connectors: &Connectors,
     ) -> CustomResult<String, errors::ConnectorError> {
-        self.api_url(connectors, &req.connector_meta_data, "payment")
+        self.api_url(
+            connectors,
+            &req.connector_meta_data,
+            pinnacle::authorize_path(&req.request.payment_method_data),
+        )
     }
 
     fn get_request_body(
@@ -672,13 +676,24 @@ static PINNACLE_SUPPORTED_PAYMENT_METHODS: LazyLock<SupportedPaymentMethods> =
                 ),
             },
         );
+        // payment-api's own checkout page takes the card (`POST /v1/initiate`).
+        pinnacle_supported_payment_methods.add(
+            enums::PaymentMethod::CardRedirect,
+            enums::PaymentMethodType::CardRedirect,
+            PaymentMethodDetails {
+                mandates: enums::FeatureStatus::NotSupported,
+                refunds: enums::FeatureStatus::Supported,
+                supported_capture_methods: supported_capture_methods.clone(),
+                specific_features: None,
+            },
+        );
 
         pinnacle_supported_payment_methods
     });
 
 static PINNACLE_CONNECTOR_INFO: ConnectorInfo = ConnectorInfo {
     display_name: "Pinnacle",
-    description: "Pinnacle payment-api: card payments with 3D Secure, and refunds",
+    description: "Pinnacle payment-api: card payments with 3D Secure, on Hyperswitch's card form or payment-api's checkout page, and refunds",
     connector_type: enums::HyperswitchConnectorCategory::PaymentGateway,
     integration_status: enums::ConnectorIntegrationStatus::Live,
 };

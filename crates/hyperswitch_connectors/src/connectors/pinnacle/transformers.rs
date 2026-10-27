@@ -2,7 +2,7 @@ use common_enums::enums;
 use common_utils::{pii::Email, request::Method, types::StringMajorUnit};
 use error_stack::{report, ResultExt};
 use hyperswitch_domain_models::{
-    payment_method_data::PaymentMethodData,
+    payment_method_data::{CardRedirectData, PaymentMethodData},
     router_data::{ConnectorAuthType, ErrorResponse, RouterData},
     router_request_types::ResponseId,
     router_response_types::{PaymentsResponseData, RedirectForm, RefundsResponseData},
@@ -34,21 +34,23 @@ impl<T> From<(StringMajorUnit, T)> for PinnacleRouterData<T> {
     }
 }
 
-/// `POST /v1/payment`. payment-api decides on 3DS itself; no field asks for it or skips it.
+/// The payment-api endpoint an authorization goes to. A card Hyperswitch holds
+/// is paid server to server (`POST /v1/payment`). Card redirect opens
+/// payment-api's own checkout page instead (`POST /v1/initiate`), where the
+/// payer enters the card: Hyperswitch never sees it.
+pub fn authorize_path(payment_method_data: &PaymentMethodData) -> &'static str {
+    match payment_method_data {
+        PaymentMethodData::CardRedirect(_) => "initiate",
+        _ => "payment",
+    }
+}
+
+/// The payer's details, which both endpoints require
+/// (`CreditCardPaymentRequest`, `CheckoutPaymentRequest`).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PinnaclePaymentsRequest {
-    number: cards::CardNumber,
-    expiry_month: Secret<String>,
-    expiry_year: Secret<String>,
-    cvv: Secret<String>,
-    reference_no: String,
-    return_url: String,
-    amount: StringMajorUnit,
-    currency: enums::Currency,
+pub struct PinnaclePayer {
     email: Email,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ip: Option<Secret<String>>,
     billing_first_name: Secret<String>,
     billing_last_name: Secret<String>,
     billing_address1: Secret<String>,
@@ -62,18 +64,9 @@ pub struct PinnaclePaymentsRequest {
     billing_phone: Secret<String>,
 }
 
-impl TryFrom<&PinnacleRouterData<&PaymentsAuthorizeRouterData>> for PinnaclePaymentsRequest {
+impl TryFrom<&PaymentsAuthorizeRouterData> for PinnaclePayer {
     type Error = error_stack::Report<errors::ConnectorError>;
-    fn try_from(
-        item: &PinnacleRouterData<&PaymentsAuthorizeRouterData>,
-    ) -> Result<Self, Self::Error> {
-        let router_data = item.router_data;
-        let card = match &router_data.request.payment_method_data {
-            PaymentMethodData::Card(card) => card,
-            _ => Err(errors::ConnectorError::NotImplemented(
-                utils::get_unimplemented_payment_method_error_message("pinnacle"),
-            ))?,
-        };
+    fn try_from(router_data: &PaymentsAuthorizeRouterData) -> Result<Self, Self::Error> {
         let email = router_data
             .get_billing_email()
             .ok()
@@ -81,23 +74,8 @@ impl TryFrom<&PinnacleRouterData<&PaymentsAuthorizeRouterData>> for PinnaclePaym
             .ok_or_else(utils::missing_field_err(
                 "payment_method_data.billing.email",
             ))?;
-
         Ok(Self {
-            number: card.card_number.clone(),
-            expiry_month: card.get_card_expiry_month_2_digit()?,
-            expiry_year: card.get_expiry_year_4_digit(),
-            cvv: card.card_cvc.clone(),
-            reference_no: router_data.connector_request_reference_id.clone(),
-            return_url: router_data.request.get_router_return_url()?,
-            amount: item.amount.clone(),
-            currency: router_data.request.currency,
             email,
-            ip: router_data
-                .request
-                .browser_info
-                .as_ref()
-                .and_then(|browser_info| browser_info.ip_address)
-                .map(|ip_address| Secret::new(ip_address.to_string())),
             billing_first_name: router_data.get_billing_first_name()?,
             billing_last_name: router_data.get_billing_last_name()?,
             billing_address1: router_data.get_billing_line1()?,
@@ -108,6 +86,87 @@ impl TryFrom<&PinnacleRouterData<&PaymentsAuthorizeRouterData>> for PinnaclePaym
             billing_country: router_data.get_billing_country()?,
             billing_phone: router_data.get_billing_phone_number()?,
         })
+    }
+}
+
+/// `POST /v1/payment`. payment-api decides on 3DS itself; no field asks for it or skips it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnacleCardPaymentRequest {
+    number: cards::CardNumber,
+    expiry_month: Secret<String>,
+    expiry_year: Secret<String>,
+    cvv: Secret<String>,
+    reference_no: String,
+    return_url: String,
+    amount: StringMajorUnit,
+    currency: enums::Currency,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ip: Option<Secret<String>>,
+    #[serde(flatten)]
+    payer: PinnaclePayer,
+}
+
+/// `POST /v1/initiate`: the card payment's fields without the card. payment-api
+/// answers `PENDING` with `redirectUrl`, its checkout page, which takes the
+/// card, runs 3DS and sends the payer back to `returnUrl`. It has no `ip`
+/// field: the page sees the payer itself.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnacleCheckoutRequest {
+    reference_no: String,
+    return_url: String,
+    amount: StringMajorUnit,
+    currency: enums::Currency,
+    #[serde(flatten)]
+    payer: PinnaclePayer,
+}
+
+/// The body for `authorize_path`'s endpoint.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum PinnaclePaymentsRequest {
+    Card(PinnacleCardPaymentRequest),
+    Checkout(PinnacleCheckoutRequest),
+}
+
+impl TryFrom<&PinnacleRouterData<&PaymentsAuthorizeRouterData>> for PinnaclePaymentsRequest {
+    type Error = error_stack::Report<errors::ConnectorError>;
+    fn try_from(
+        item: &PinnacleRouterData<&PaymentsAuthorizeRouterData>,
+    ) -> Result<Self, Self::Error> {
+        let router_data = item.router_data;
+        match &router_data.request.payment_method_data {
+            PaymentMethodData::Card(card) => Ok(Self::Card(PinnacleCardPaymentRequest {
+                number: card.card_number.clone(),
+                expiry_month: card.get_card_expiry_month_2_digit()?,
+                expiry_year: card.get_expiry_year_4_digit(),
+                cvv: card.card_cvc.clone(),
+                reference_no: router_data.connector_request_reference_id.clone(),
+                return_url: router_data.request.get_router_return_url()?,
+                amount: item.amount.clone(),
+                currency: router_data.request.currency,
+                ip: router_data
+                    .request
+                    .browser_info
+                    .as_ref()
+                    .and_then(|browser_info| browser_info.ip_address)
+                    .map(|ip_address| Secret::new(ip_address.to_string())),
+                payer: PinnaclePayer::try_from(router_data)?,
+            })),
+            PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {}) => {
+                Ok(Self::Checkout(PinnacleCheckoutRequest {
+                    reference_no: router_data.connector_request_reference_id.clone(),
+                    return_url: router_data.request.get_router_return_url()?,
+                    amount: item.amount.clone(),
+                    currency: router_data.request.currency,
+                    payer: PinnaclePayer::try_from(router_data)?,
+                }))
+            }
+            _ => Err(errors::ConnectorError::NotImplemented(
+                utils::get_unimplemented_payment_method_error_message("pinnacle"),
+            ))?,
+        }
     }
 }
 
@@ -215,8 +274,42 @@ pub enum PinnacleTransactionStatus {
     Error,
 }
 
-/// Body of `POST /v1/payment` and of `GET /v1/payment/status`. Only the payment
-/// response carries `redirectUrl`, and only while 3DS is waiting.
+/// The attempt's status from payment-api's, given whether the answer carries a
+/// `redirectUrl` and the attempt's status before it.
+fn attempt_status(
+    status: PinnacleTransactionStatus,
+    has_redirect: bool,
+    current: enums::AttemptStatus,
+) -> enums::AttemptStatus {
+    match status {
+        PinnacleTransactionStatus::Approved => enums::AttemptStatus::Charged,
+        // payment-api sends the payer to a page of its own: 3DS for a card payment
+        // (WAITING), or the checkout page for card redirect (PENDING).
+        PinnacleTransactionStatus::Waiting | PinnacleTransactionStatus::Pending if has_redirect => {
+            enums::AttemptStatus::AuthenticationPending
+        }
+        // A status lookup carries no redirectUrl. While payment-api still waits on 3DS
+        // or on the checkout page, the payer has not finished there: the payment still
+        // needs their action. payment-api never gives up on one of these, so it stays
+        // waiting for good if the payer never comes back; nothing here or there turns
+        // it into a failure.
+        PinnacleTransactionStatus::Waiting | PinnacleTransactionStatus::Pending
+            if current == enums::AttemptStatus::AuthenticationPending =>
+        {
+            enums::AttemptStatus::AuthenticationPending
+        }
+        PinnacleTransactionStatus::Waiting | PinnacleTransactionStatus::Pending => {
+            enums::AttemptStatus::Pending
+        }
+        PinnacleTransactionStatus::Declined
+        | PinnacleTransactionStatus::Cancelled
+        | PinnacleTransactionStatus::Error => enums::AttemptStatus::Failure,
+    }
+}
+
+/// Body of `POST /v1/payment`, `POST /v1/initiate` and `GET /v1/payment/status`.
+/// Only the first two carry `redirectUrl`: while 3DS is waiting, and always
+/// for the checkout page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PinnacleTransactionResponse {
@@ -237,27 +330,11 @@ impl<F, T> TryFrom<ResponseRouterData<F, PinnacleTransactionResponse, T, Payment
         item: ResponseRouterData<F, PinnacleTransactionResponse, T, PaymentsResponseData>,
     ) -> Result<Self, Self::Error> {
         let response = item.response;
-        let status = match response.status {
-            PinnacleTransactionStatus::Approved => enums::AttemptStatus::Charged,
-            PinnacleTransactionStatus::Waiting if response.redirect_url.is_some() => {
-                enums::AttemptStatus::AuthenticationPending
-            }
-            // A status lookup carries no redirectUrl. While payment-api still waits on 3DS,
-            // the customer has not finished it: the payment still needs their action.
-            // payment-api never gives up on one of these, so it stays WAITING for good if
-            // the customer never comes back; nothing here or there turns it into a failure.
-            PinnacleTransactionStatus::Waiting
-                if item.data.status == enums::AttemptStatus::AuthenticationPending =>
-            {
-                enums::AttemptStatus::AuthenticationPending
-            }
-            PinnacleTransactionStatus::Waiting | PinnacleTransactionStatus::Pending => {
-                enums::AttemptStatus::Pending
-            }
-            PinnacleTransactionStatus::Declined
-            | PinnacleTransactionStatus::Cancelled
-            | PinnacleTransactionStatus::Error => enums::AttemptStatus::Failure,
-        };
+        let status = attempt_status(
+            response.status,
+            response.redirect_url.is_some(),
+            item.data.status,
+        );
 
         if status == enums::AttemptStatus::Failure {
             return Ok(Self {
@@ -551,9 +628,23 @@ pub fn webhook_signature_message(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
+    use std::str::FromStr;
+
+    use common_enums::enums::{AttemptStatus, CountryAlpha2, Currency};
+    use common_utils::{
+        pii::Email,
+        types::{AmountConvertor, MinorUnit, StringMajorUnitForConnector},
+    };
+    use hyperswitch_domain_models::payment_method_data::{
+        Card, CardRedirectData, PaymentMethodData,
+    };
     use hyperswitch_masking::Secret;
 
-    use super::tenant_base_url;
+    use super::{
+        attempt_status, authorize_path, tenant_base_url, PinnacleCheckoutRequest, PinnaclePayer,
+        PinnaclePaymentsRequest, PinnacleTransactionResponse,
+        PinnacleTransactionStatus::{Approved, Declined, Pending, Waiting},
+    };
 
     const DEFAULT: &str = "https://api.prod.pinnacle-soft.io";
 
@@ -600,5 +691,131 @@ mod tests {
     #[test]
     fn credentials_in_the_url_are_refused() {
         assert!(tenant_base_url(DEFAULT, &metadata("https://user:pw@api.brand.example")).is_err());
+    }
+
+    #[test]
+    fn card_redirect_opens_the_checkout_page_and_a_card_is_paid_directly() {
+        let card_redirect = PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {});
+        assert_eq!(authorize_path(&card_redirect), "initiate");
+        assert_eq!(
+            authorize_path(&PaymentMethodData::Card(Card::default())),
+            "payment"
+        );
+    }
+
+    fn payer() -> PinnaclePayer {
+        PinnaclePayer {
+            email: Email::from_str("payer@example.com").unwrap(),
+            billing_first_name: Secret::new("Jane".to_string()),
+            billing_last_name: Secret::new("Doe".to_string()),
+            billing_address1: Secret::new("1 Main Street".to_string()),
+            billing_address2: None,
+            billing_city: "Berlin".to_string(),
+            billing_state: None,
+            billing_postcode: Secret::new("10115".to_string()),
+            billing_country: CountryAlpha2::DE,
+            billing_phone: Secret::new("+4930123456".to_string()),
+        }
+    }
+
+    #[test]
+    fn the_checkout_request_carries_the_payer_but_no_card() {
+        let request = PinnaclePaymentsRequest::Checkout(PinnacleCheckoutRequest {
+            reference_no: "pay_abc_1".to_string(),
+            return_url: "https://hs-api.example/payments/pay_abc/redirect".to_string(),
+            amount: StringMajorUnitForConnector
+                .convert(MinorUnit::new(1050), Currency::EUR)
+                .unwrap(),
+            currency: Currency::EUR,
+            payer: payer(),
+        });
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "referenceNo": "pay_abc_1",
+                "returnUrl": "https://hs-api.example/payments/pay_abc/redirect",
+                "amount": "10.50",
+                "currency": "EUR",
+                "email": "payer@example.com",
+                "billingFirstName": "Jane",
+                "billingLastName": "Doe",
+                "billingAddress1": "1 Main Street",
+                "billingCity": "Berlin",
+                "billingPostcode": "10115",
+                "billingCountry": "DE",
+                "billingPhone": "+4930123456",
+            })
+        );
+    }
+
+    #[test]
+    fn the_checkout_answer_is_read_with_its_link() {
+        // payment-api's documented answer to POST /v1/initiate (openapi.yaml).
+        let response: PinnacleTransactionResponse = serde_json::from_value(serde_json::json!({
+            "uuid": "81c34685-bd18-4e52-a1b1-bc842946ca18",
+            "referenceNo": "ORD-2025-12345",
+            "returnUrl": "https://example.com/payment/callback",
+            "status": "PENDING",
+            "operation": "AUTH",
+            "message": "Transaction initiated",
+            "amount": "50.00",
+            "currency": "EUR",
+            "redirectUrl": "https://checkout.payment.test?checkoutToken=abc",
+        }))
+        .unwrap();
+        assert_eq!(response.status, Pending);
+        assert_eq!(
+            response.redirect_url.as_deref(),
+            Some("https://checkout.payment.test?checkoutToken=abc")
+        );
+    }
+
+    #[test]
+    fn a_checkout_link_waits_for_the_payer() {
+        assert_eq!(
+            attempt_status(Pending, true, AttemptStatus::Started),
+            AttemptStatus::AuthenticationPending
+        );
+    }
+
+    #[test]
+    fn a_lookup_while_the_payer_is_on_the_checkout_page_still_waits_for_them() {
+        assert_eq!(
+            attempt_status(Pending, false, AttemptStatus::AuthenticationPending),
+            AttemptStatus::AuthenticationPending
+        );
+    }
+
+    #[test]
+    fn a_pending_lookup_with_nothing_asked_of_the_payer_is_pending() {
+        assert_eq!(
+            attempt_status(Pending, false, AttemptStatus::Pending),
+            AttemptStatus::Pending
+        );
+    }
+
+    #[test]
+    fn three_ds_still_waits_for_the_payer() {
+        assert_eq!(
+            attempt_status(Waiting, true, AttemptStatus::Started),
+            AttemptStatus::AuthenticationPending
+        );
+        assert_eq!(
+            attempt_status(Waiting, false, AttemptStatus::AuthenticationPending),
+            AttemptStatus::AuthenticationPending
+        );
+    }
+
+    #[test]
+    fn approved_is_charged_and_declined_fails() {
+        assert_eq!(
+            attempt_status(Approved, false, AttemptStatus::AuthenticationPending),
+            AttemptStatus::Charged
+        );
+        assert_eq!(
+            attempt_status(Declined, false, AttemptStatus::AuthenticationPending),
+            AttemptStatus::Failure
+        );
     }
 }

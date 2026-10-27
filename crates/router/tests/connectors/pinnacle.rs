@@ -2,18 +2,20 @@
 //!
 //! They call the real sandbox, so they need a token:
 //! `CONNECTOR_AUTH_FILE_PATH` must point at a TOML file with
-//! `[pinnacle]` / `api_key = "<sandbox token with the payment:s2s ability>"`.
+//! `[pinnacle]` / `api_key = "<sandbox token with the payment:s2s and
+//! payment:checkout abilities>"`.
 //!
 //! Sandbox cards: 5500000000000004 approves, 4242424242424242 declines, and
 //! 4012888888881881 goes through 3DS. Completing 3DS needs a browser (the OTP
-//! decides the outcome), so it is tested from the dashboard, not here.
+//! decides the outcome), so it is tested from the dashboard, not here; so is
+//! paying on payment-api's checkout page, where card redirect sends the payer.
 
 use std::str::FromStr;
 
 use common_utils::{pii::Email, types::MinorUnit};
 use hyperswitch_domain_models::{
     address::{Address, AddressDetails, PhoneDetails},
-    payment_method_data::{Card, PaymentMethodData},
+    payment_method_data::{Card, CardRedirectData, PaymentMethodData},
 };
 use hyperswitch_masking::Secret;
 use router::types::{self, api, storage::enums, PaymentAddress};
@@ -99,6 +101,20 @@ fn payment_data(card_number: &str, minor_amount: i64) -> Option<types::PaymentsA
         }),
         amount: minor_amount,
         minor_amount: MinorUnit::new(minor_amount),
+        email: Some(Email::from_str("customer@example.com").unwrap()),
+        router_return_url: Some("https://hyperswitch.test/return".to_string()),
+        ..utils::PaymentAuthorizeType::default().0
+    })
+}
+
+/// Card redirect: no card here; payment-api's checkout page takes it. EUR is one
+/// of the four currencies `POST /v1/initiate` accepts.
+fn checkout_data(minor_amount: i64) -> Option<types::PaymentsAuthorizeData> {
+    Some(types::PaymentsAuthorizeData {
+        payment_method_data: PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {}),
+        amount: minor_amount,
+        minor_amount: MinorUnit::new(minor_amount),
+        currency: enums::Currency::EUR,
         email: Some(Email::from_str("customer@example.com").unwrap()),
         router_return_url: Some("https://hyperswitch.test/return".to_string()),
         ..utils::PaymentAuthorizeType::default().0
@@ -205,6 +221,46 @@ async fn should_keep_unfinished_3ds_payment_open_on_sync() {
             enums::AttemptStatus::Pending | enums::AttemptStatus::AuthenticationPending
         ),
         "an unfinished 3DS payment became {:?}",
+        response.status
+    );
+}
+
+#[actix_web::test]
+async fn should_send_the_payer_to_the_checkout_page() {
+    let response = CONNECTOR
+        .make_payment(checkout_data(106), get_default_payment_info())
+        .await
+        .expect("Payment response");
+    assert_eq!(response.status, enums::AttemptStatus::AuthenticationPending);
+    match response.response.expect("checkout response") {
+        types::PaymentsResponseData::TransactionResponse {
+            redirection_data, ..
+        } => assert!(
+            redirection_data.is_some(),
+            "no redirect to the checkout page"
+        ),
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[actix_web::test]
+async fn should_keep_an_unpaid_checkout_open_on_sync() {
+    let payment = CONNECTOR
+        .make_payment(checkout_data(107), get_default_payment_info())
+        .await
+        .expect("Payment response");
+    let reference = payment.connector_request_reference_id.clone();
+    let txn_id = utils::get_connector_transaction_id(payment.response).expect("payment-api uuid");
+    let response = CONNECTOR
+        .sync_payment_with_reference(reference, sync_data(txn_id), get_default_payment_info())
+        .await
+        .expect("PSync response");
+    assert!(
+        matches!(
+            response.status,
+            enums::AttemptStatus::Pending | enums::AttemptStatus::AuthenticationPending
+        ),
+        "an unpaid checkout became {:?}",
         response.status
     );
 }
