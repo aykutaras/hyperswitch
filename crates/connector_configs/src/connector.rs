@@ -213,6 +213,12 @@ pub struct ConfigMetadata {
     pub merchant_street_address: Option<InputData>,
     pub customer_service_phone_number: Option<InputData>,
     pub merchant_url: Option<InputData>,
+    pub creditor_name: Option<InputData>,
+    pub creditor_iban: Option<InputData>,
+    pub creditor_sort_code: Option<InputData>,
+    pub creditor_account_number: Option<InputData>,
+    pub eur_scheme: Option<InputData>,
+    pub test_banks: Option<InputData>,
 }
 
 #[serde_with::skip_serializing_none]
@@ -756,5 +762,41 @@ impl ConnectorConfig {
             Connector::JpmorganOrbital => Ok(connector_data.jpmorgan_orbital),
             Connector::Givepayments => Ok(connector_data.givepayments),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+    use super::*;
+
+    /// The dashboard's connector form shows only the metadata fields
+    /// `ConfigMetadata` names; any other field in the TOML is dropped without
+    /// an error, and the connector then fails at the first payment.
+    #[test]
+    fn saltedge_form_asks_for_the_creditor_account() {
+        // Parsing the whole TOML into `ConnectorConfig` overflows a test
+        // thread's 2 MiB stack in a debug build.
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let metadata = ConnectorConfig::get_connector_config(Connector::Saltedge)
+                    .expect("development.toml parses")
+                    .and_then(|config| config.metadata)
+                    .expect("saltedge has metadata fields");
+                for (field, input) in [
+                    ("creditor_name", &metadata.creditor_name),
+                    ("creditor_iban", &metadata.creditor_iban),
+                    ("creditor_sort_code", &metadata.creditor_sort_code),
+                    ("creditor_account_number", &metadata.creditor_account_number),
+                    ("eur_scheme", &metadata.eur_scheme),
+                    ("test_banks", &metadata.test_banks),
+                ] {
+                    assert!(input.is_some(), "{field} is missing from the form");
+                }
+            })
+            .expect("spawn the test thread")
+            .join()
+            .expect("the check passes");
     }
 }
