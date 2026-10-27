@@ -9506,6 +9506,8 @@ key1="Secret API Key"
   payment_method_type = "Mastercard"
 [[pinnacle.debit]]
   payment_method_type = "Visa"
+[[pinnacle.card_redirect]]
+  payment_method_type = "card_redirect"
 [pinnacle.connector_auth.HeaderKey]
 api_key = "API Key"
 [pinnacle.connector_webhook_details]

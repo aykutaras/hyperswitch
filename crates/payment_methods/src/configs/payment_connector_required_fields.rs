@@ -1353,42 +1353,63 @@ impl RequiredFields {
                     ),
                     (
                         enums::PaymentMethodType::CardRedirect,
-                        connectors(vec![(
-                            // D24 (Directa24) WebPay — Transbank's Chilean redirect method.
-                            Connector::D24,
-                            fields(
-                                vec![],
-                                vec![
-                                    RequiredField::BillingFirstName(
-                                        "first_name",
-                                        FieldType::UserFullName,
-                                    ),
-                                    RequiredField::BillingLastName(
-                                        "last_name",
-                                        FieldType::UserFullName,
-                                    ),
-                                    RequiredField::BillingEmail,
-                                    // WebPay is Chile-only: Transbank's hosted page only
-                                    // accepts Chilean payers.
-                                    RequiredField::BillingAddressCountries(vec!["CL"]),
-                                    // The Chilean RUT. `PixDocumentType` / `PixDocumentNumber`
-                                    // are misnamed: they resolve to
-                                    // `customer.document_details.document_type` and
-                                    // `customer.document_details.document_number`, the
-                                    // generic customer-document paths D24 needs — there is
-                                    // nothing Pix-specific about them, and no generic
-                                    // customer-document variant exists. Renaming them is a
-                                    // separate change touching every existing call site.
-                                    // `DocumentKind` serializes `rename_all = "snake_case"`,
-                                    // so "other" is the correct option string; UCS maps
-                                    // (DocumentKind::Other, CountryAlpha2::CL) to the D24
-                                    // `document_type` "RUT".
-                                    RequiredField::PixDocumentType(vec!["other"]),
-                                    RequiredField::PixDocumentNumber,
-                                ],
-                                vec![],
+                        connectors(vec![
+                            (
+                                // D24 (Directa24) WebPay — Transbank's Chilean redirect method.
+                                Connector::D24,
+                                fields(
+                                    vec![],
+                                    vec![
+                                        RequiredField::BillingFirstName(
+                                            "first_name",
+                                            FieldType::UserFullName,
+                                        ),
+                                        RequiredField::BillingLastName(
+                                            "last_name",
+                                            FieldType::UserFullName,
+                                        ),
+                                        RequiredField::BillingEmail,
+                                        // WebPay is Chile-only: Transbank's hosted page only
+                                        // accepts Chilean payers.
+                                        RequiredField::BillingAddressCountries(vec!["CL"]),
+                                        // The Chilean RUT. `PixDocumentType` / `PixDocumentNumber`
+                                        // are misnamed: they resolve to
+                                        // `customer.document_details.document_type` and
+                                        // `customer.document_details.document_number`, the
+                                        // generic customer-document paths D24 needs — there is
+                                        // nothing Pix-specific about them, and no generic
+                                        // customer-document variant exists. Renaming them is a
+                                        // separate change touching every existing call site.
+                                        // `DocumentKind` serializes `rename_all = "snake_case"`,
+                                        // so "other" is the correct option string; UCS maps
+                                        // (DocumentKind::Other, CountryAlpha2::CL) to the D24
+                                        // `document_type` "RUT".
+                                        RequiredField::PixDocumentType(vec!["other"]),
+                                        RequiredField::PixDocumentNumber,
+                                    ],
+                                    vec![],
+                                ),
                             ),
-                        )]),
+                            (
+                                // payment-api's checkout page: the card payment's payer
+                                // details, which `POST /v1/initiate` requires too.
+                                Connector::Pinnacle,
+                                fields(
+                                    vec![],
+                                    vec![],
+                                    [
+                                        billing_email_billing_name_phone(),
+                                        vec![
+                                            RequiredField::BillingAddressLine1,
+                                            RequiredField::BillingAddressCity,
+                                            RequiredField::BillingAddressZip,
+                                            RequiredField::BillingAddressCountries(vec!["ALL"]),
+                                        ],
+                                    ]
+                                    .concat(),
+                                ),
+                            ),
+                        ]),
                     ),
                 ])),
             ),
