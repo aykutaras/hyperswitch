@@ -27,7 +27,9 @@ function parseRoute(url) {
   /*
    * Payment-link pages set `window.__REDIRECTION_LOG_ENDPOINT` from the
    * backend, so prefer that value. It is authoritative because custom domains
-   * can hide the real router hostname
+   * can hide the real router hostname.
+   * Every other page that includes this script is served by the router
+   * itself, so the page's own origin is the router: post to the same path there.
    */
   function getEnvRoute(url) {
     // If the backend rendered a non-empty log endpoint string, use it unconditionally.
@@ -39,10 +41,7 @@ function parseRoute(url) {
       return backendEndpoint;
     }
 
-    const route = new URL(url).hostname;
-    return route === "api.hyperswitch.io"
-      ? "https://api.hyperswitch.io/logs/redirection"
-      : "https://app.hyperswitch.io/api/logs/redirection";
+    return new URL("/logs/redirection", url).href;
   }
 
   
