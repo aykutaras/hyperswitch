@@ -693,7 +693,7 @@ static PINNACLE_SUPPORTED_PAYMENT_METHODS: LazyLock<SupportedPaymentMethods> =
 
 static PINNACLE_CONNECTOR_INFO: ConnectorInfo = ConnectorInfo {
     display_name: "Pinnacle",
-    description: "Pinnacle payment-api: card payments with 3D Secure, on Hyperswitch's card form or payment-api's checkout page, and refunds",
+    description: "Pinnacle payment-api: card payments with 3D Secure, on the payment form or payment-api's checkout page, and refunds",
     connector_type: enums::HyperswitchConnectorCategory::PaymentGateway,
     integration_status: enums::ConnectorIntegrationStatus::Live,
 };
