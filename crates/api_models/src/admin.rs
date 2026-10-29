@@ -3574,7 +3574,7 @@ pub struct BusinessPaymentLinkConfig {
     /// A list of allowed domains (glob patterns) where this link can be embedded / opened from
     #[schema(value_type = Option<HashSet<String>>)]
     pub allowed_domains: Option<HashSet<String>>,
-    /// Toggle for HyperSwitch branding visibility
+    /// Show the HyperSwitch branding on the payment link. Hidden unless true
     pub branding_visibility: Option<bool>,
 }
 
@@ -3807,7 +3807,7 @@ pub struct PaymentLinkConfig {
     /// Custom layout for details section
     #[schema(value_type = Option<PaymentLinkDetailsLayout>, example = "layout1")]
     pub details_layout: Option<api_enums::PaymentLinkDetailsLayout>,
-    /// Toggle for HyperSwitch branding visibility
+    /// Show the HyperSwitch branding on the payment link. Hidden unless true
     pub branding_visibility: Option<bool>,
     /// Text for payment link's handle confirm button
     pub payment_button_text: Option<String>,
