@@ -11016,7 +11016,7 @@
               },
               "branding_visibility": {
                 "type": "boolean",
-                "description": "Toggle for HyperSwitch branding visibility",
+                "description": "Show the HyperSwitch branding on the payment link. Hidden unless true",
                 "nullable": true
               }
             }
@@ -23001,7 +23001,7 @@
           },
           "branding_visibility": {
             "type": "boolean",
-            "description": "Toggle for HyperSwitch branding visibility",
+            "description": "Show the HyperSwitch branding on the payment link. Hidden unless true",
             "nullable": true
           },
           "payment_button_text": {

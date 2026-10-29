@@ -883,10 +883,11 @@ function createHyperSwitchBrandingSVGElement(wrapperId) {
 /**
  * Uses
  *    - Creates and appends HyperSwitch branding in appropriate sections based on the viewport dimensions (web vs mobile views)
+ *    - Only when the profile sets branding_visibility to true; hidden when it is unset
  * @param {PaymentDetails} paymentDetails
  */
 function renderBranding(paymentDetails) {
-  if (paymentDetails.branding_visibility !== false) {
+  if (paymentDetails.branding_visibility === true) {
     // Append below cart section for web views
     var cartItemNode = document.getElementById("hyper-checkout-cart");
     if (cartItemNode instanceof HTMLDivElement) {
