@@ -3,67 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Email Template</title>
+    <title>Welcome to {entity_name}</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
     <style>
-      body {
+      body {{
         margin: 0;
         padding: 0;
         background-color: #f6f6f8;
         font-family: "Inter", Arial, sans-serif;
-      }
-      p {
+      }}
+      p {{
         margin-bottom: 20px;
         font-size: 16px;
         line-height: 1.5;
-      }
-      a {
-        color: #0066cc;
-        text-decoration: none;
-      }
-      a:hover {
-        text-decoration: underline;
-      }
+      }}
     </style>
   </head>
   <body>
-    <div>
+    <div
+      style="
+        max-width: 600px;
+        margin: auto;
+        padding: 20px;
+        background-color: {background_color};
+        color: {foreground_color};
+      "
+    >
+      <img
+        src="{entity_logo_url}"
+        alt="{entity_name}"
+        style="height: auto; width: 4rem"
+      />
+      <hr style="border: none; border-top: 2px solid {primary_color}" />
       <p>Hello there,</p>
       <p>
-        We're the Community Growth team at Hyperswitch. We're building the
-        world's first open-source payments orchestration platform to simplify
-        payment diversity and accelerate innovation.
+        Thank you for signing up on the {entity_name} Dashboard. We're glad to
+        have you with us.
       </p>
-      <p>
-        Learn more about our journey in this blog:
-        <a
-          href="https://hyperswitch.io/blog/building-hyperswitch-the-world-s-first-open-source-payments-platform"
-          >Building Hyperswitch — The World’s First Open Source Payments
-          Platform</a
-        >.
-      </p>
-      <p>
-        We’ve got an exciting roadmap ahead — check it out here:
-        <a href="https://docs.hyperswitch.io/about-hyperswitch/roadmap"
-          >Our quarterly roadmap</a
-        >.
-      </p>
-      <p>
-        For support, reach out via
-        <a href="https://github.com/juspay/hyperswitch/discussions"
-          >GitHub Discussions</a
-        >
-        or our
-        <a
-          href="https://inviter.co/hyperswitch-slack"
-          >Slack Community</a
-        >.
-      </p>
-      <p>Let’s build the future of payments, together.</p>
-      <p>Thank you,<br />Team Hyperswitch | Hyperswitch.io</p>
+      <p>Thank you,<br />Team {entity_name}</p>
     </div>
   </body>
 </html>
