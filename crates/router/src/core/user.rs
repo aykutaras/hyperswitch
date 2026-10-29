@@ -390,15 +390,17 @@ pub async fn connect_account(
             .await?;
 
         let theme = theme_utils::get_theme_using_optional_theme_id(&state, theme_id).await?;
+        let theme_config = theme
+            .as_ref()
+            .map(|theme| theme.email_config())
+            .unwrap_or(state.conf.theme.email_config.clone());
 
         let magic_link_email = email_types::VerifyEmail {
             recipient_email: domain::UserEmail::from_pii_email(user_from_db.get_email())?,
             settings: state.conf.clone(),
             auth_id,
             theme_id: theme.as_ref().map(|theme| theme.theme_id.clone()),
-            theme_config: theme
-                .map(|theme| theme.email_config())
-                .unwrap_or(state.conf.theme.email_config.clone()),
+            theme_config: theme_config.clone(),
         };
 
         let magic_link_result = state
@@ -417,6 +419,7 @@ pub async fn connect_account(
         {
             let welcome_to_community_email = email_types::WelcomeToCommunity {
                 recipient_email: domain::UserEmail::from_pii_email(user_from_db.get_email())?,
+                theme_config,
             };
 
             let welcome_email_result = state

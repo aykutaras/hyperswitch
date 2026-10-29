@@ -80,8 +80,16 @@ pub enum EmailBody {
         expires_in: u8,
         api_key_name: String,
         prefix: String,
+        entity_name: String,
+        entity_logo_url: String,
     },
-    WelcomeToCommunity,
+    WelcomeToCommunity {
+        entity_name: String,
+        entity_logo_url: String,
+        primary_color: String,
+        background_color: String,
+        foreground_color: String,
+    },
     RoleDeleted {
         user_name: String,
         role_name: String,
@@ -244,14 +252,31 @@ Email         : {user_email}
                 expires_in,
                 api_key_name,
                 prefix,
+                entity_name,
+                entity_logo_url,
             } => format!(
                 include_str!("assets/api_key_expiry_reminder.html"),
                 api_key_name = api_key_name,
                 prefix = prefix,
                 expires_in = expires_in,
+                entity_name = entity_name,
+                entity_logo_url = entity_logo_url,
             ),
-            EmailBody::WelcomeToCommunity => {
-                include_str!("assets/welcome_to_community.html").to_string()
+            EmailBody::WelcomeToCommunity {
+                entity_name,
+                entity_logo_url,
+                primary_color,
+                background_color,
+                foreground_color,
+            } => {
+                format!(
+                    include_str!("assets/welcome_to_community.html"),
+                    entity_name = entity_name,
+                    entity_logo_url = entity_logo_url,
+                    primary_color = primary_color,
+                    background_color = background_color,
+                    foreground_color = foreground_color
+                )
             }
             EmailBody::RoleDeleted {
                 user_name,
@@ -697,6 +722,8 @@ impl EmailData for ApiKeyExpiryReminder {
             expires_in: self.expires_in,
             api_key_name: self.api_key_name.clone(),
             prefix: self.prefix.clone(),
+            entity_name: self.theme_config.entity_name.clone(),
+            entity_logo_url: self.theme_config.entity_logo_url.clone(),
         });
 
         Ok(EmailContents {
@@ -709,15 +736,25 @@ impl EmailData for ApiKeyExpiryReminder {
 
 pub struct WelcomeToCommunity {
     pub recipient_email: domain::UserEmail,
+    pub theme_config: EmailThemeConfig,
 }
 
 #[async_trait::async_trait]
 impl EmailData for WelcomeToCommunity {
     async fn get_email_data(&self, _base_url: &str) -> CustomResult<EmailContents, EmailError> {
-        let body = html::get_html_body(EmailBody::WelcomeToCommunity);
+        let body = html::get_html_body(EmailBody::WelcomeToCommunity {
+            entity_name: self.theme_config.entity_name.clone(),
+            entity_logo_url: self.theme_config.entity_logo_url.clone(),
+            primary_color: self.theme_config.primary_color.clone(),
+            background_color: self.theme_config.background_color.clone(),
+            foreground_color: self.theme_config.foreground_color.clone(),
+        });
 
         Ok(EmailContents {
-            subject: "Thank you for signing up on Hyperswitch Dashboard!".to_string(),
+            subject: format!(
+                "Thank you for signing up on {} Dashboard!",
+                self.theme_config.entity_name
+            ),
             body: external_services::email::IntermediateString::new(body),
             recipient: self.recipient_email.clone().into_inner(),
         })
@@ -783,5 +820,83 @@ impl EmailData for RoleDeleted {
             body: external_services::email::IntermediateString::new(body),
             recipient: self.recipient_email.clone().into_inner(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ENTITY_NAME: &str = "Acme Pay";
+    const ENTITY_LOGO_URL: &str = "https://assets.example.com/acme-pay-logo.png";
+
+    fn theme_config() -> EmailThemeConfig {
+        EmailThemeConfig {
+            entity_name: ENTITY_NAME.to_string(),
+            entity_logo_url: ENTITY_LOGO_URL.to_string(),
+            primary_color: "#006DF9".to_string(),
+            foreground_color: "#111326".to_string(),
+            background_color: "#FFFFFF".to_string(),
+        }
+    }
+
+    #[allow(clippy::expect_used)]
+    fn recipient_email() -> domain::UserEmail {
+        domain::UserEmail::new(Secret::new("merchant@example.com".to_string()))
+            .expect("Failed to create the test recipient email")
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn get_email_contents(email: impl EmailData) -> EmailContents {
+        email
+            .get_email_data("https://app.example.com")
+            .await
+            .expect("Failed to build the email contents")
+    }
+
+    fn welcome_to_community() -> WelcomeToCommunity {
+        WelcomeToCommunity {
+            recipient_email: recipient_email(),
+            theme_config: theme_config(),
+        }
+    }
+
+    fn assert_body_uses_entity_branding(body: String) {
+        assert!(body.contains(ENTITY_NAME));
+        assert!(body.contains(ENTITY_LOGO_URL));
+        assert!(!body.to_lowercase().contains("hyperswitch"));
+    }
+
+    #[tokio::test]
+    async fn welcome_to_community_body_uses_entity_name_and_logo() {
+        let email_contents = get_email_contents(welcome_to_community()).await;
+
+        assert_body_uses_entity_branding(email_contents.body.into_inner());
+    }
+
+    #[tokio::test]
+    async fn welcome_to_community_subject_uses_entity_name() {
+        let email_contents = get_email_contents(welcome_to_community()).await;
+
+        assert_eq!(
+            email_contents.subject,
+            "Thank you for signing up on Acme Pay Dashboard!"
+        );
+    }
+
+    #[tokio::test]
+    async fn api_key_expiry_reminder_body_uses_entity_name_and_logo() {
+        let email_contents = get_email_contents(ApiKeyExpiryReminder {
+            recipient_email: recipient_email(),
+            subject: consts::EMAIL_SUBJECT_API_KEY_EXPIRY,
+            expires_in: 7,
+            api_key_name: "Production key".to_string(),
+            prefix: "snd_abc".to_string(),
+            theme_id: None,
+            theme_config: theme_config(),
+        })
+        .await;
+
+        assert_body_uses_entity_branding(email_contents.body.into_inner());
     }
 }
