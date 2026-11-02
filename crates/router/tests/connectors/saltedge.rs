@@ -2,10 +2,11 @@
 //! separate sandbox host: a Salt Edge application in Test status reaches only
 //! fake and sandbox banks.
 //!
-//! They call the real API, so they need such an application's keys:
-//! `CONNECTOR_AUTH_FILE_PATH` must point at a TOML file with `[saltedge]` /
-//! `api_key = "<App-id>"`, `key1 = "<Secret>"` and `api_secret = "<private key
-//! PEM>"`, whose public key is uploaded to the application.
+//! They call the real API, so they need such an application's keys, one per
+//! currency because a Salt Edge profile takes one: `CONNECTOR_AUTH_FILE_PATH`
+//! must point at a TOML file with `[saltedge]` for EUR and `[saltedge_gbp]` for
+//! GBP, each with `api_key = "<App-id>"`, `key1 = "<Secret>"` and `api_secret =
+//! "<private key PEM>"`, whose public key is uploaded to that application.
 //!
 //! The payer finishes every payment in Salt Edge's widget, which needs a
 //! browser, so these tests stop at the redirect. Completing a payment, and the
@@ -21,7 +22,9 @@ use test_utils::connector_auth;
 use crate::utils::{self, ConnectorActions, PaymentInfo};
 
 #[derive(Clone, Copy)]
-struct SaltedgeTest;
+struct SaltedgeTest {
+    currency: enums::Currency,
+}
 impl ConnectorActions for SaltedgeTest {}
 impl utils::Connector for SaltedgeTest {
     fn get_data(&self) -> api::ConnectorData {
@@ -35,10 +38,13 @@ impl utils::Connector for SaltedgeTest {
     }
 
     fn get_auth_token(&self) -> types::ConnectorAuthType {
+        let auth = connector_auth::ConnectorAuthentication::new();
+        let keys = match self.currency {
+            enums::Currency::GBP => auth.saltedge_gbp,
+            _ => auth.saltedge,
+        };
         utils::to_connector_auth_type(
-            connector_auth::ConnectorAuthentication::new()
-                .saltedge
-                .expect("Missing connector authentication configuration")
+            keys.expect("Missing connector authentication configuration")
                 .into(),
         )
     }
@@ -48,7 +54,12 @@ impl utils::Connector for SaltedgeTest {
     }
 }
 
-static CONNECTOR: SaltedgeTest = SaltedgeTest {};
+static EUR_CONNECTOR: SaltedgeTest = SaltedgeTest {
+    currency: enums::Currency::EUR,
+};
+static GBP_CONNECTOR: SaltedgeTest = SaltedgeTest {
+    currency: enums::Currency::GBP,
+};
 
 /// Salt Edge keeps one customer per email, so each run makes a new one.
 fn new_payer_email() -> Email {
@@ -59,16 +70,26 @@ fn new_payer_email() -> Email {
     .unwrap()
 }
 
-fn payment_info(connector_customer: Option<String>) -> Option<PaymentInfo> {
-    Some(PaymentInfo {
-        connector_customer,
-        connector_meta_data: Some(serde_json::json!({
+fn payment_info(
+    currency: enums::Currency,
+    connector_customer: Option<String>,
+) -> Option<PaymentInfo> {
+    let connector_meta_data = match currency {
+        enums::Currency::GBP => serde_json::json!({
             "creditor_name": "Pinnacle Test",
-            "creditor_iban": "DE89370400440532013000",
             "creditor_sort_code": "040004",
             "creditor_account_number": "12345678",
             "test_banks": "show",
-        })),
+        }),
+        _ => serde_json::json!({
+            "creditor_name": "Pinnacle Test",
+            "creditor_iban": "DE89370400440532013000",
+            "test_banks": "show",
+        }),
+    };
+    Some(PaymentInfo {
+        connector_customer,
+        connector_meta_data: Some(connector_meta_data),
         ..Default::default()
     })
 }
@@ -101,24 +122,27 @@ fn sync_data(connector_transaction_id: String) -> Option<types::PaymentsSyncData
     })
 }
 
-async fn new_customer() -> String {
-    let response = CONNECTOR
+async fn new_customer(connector: &SaltedgeTest) -> String {
+    let response = connector
         .create_connector_customer(
             Some(types::ConnectorCustomerData {
                 email: Some(new_payer_email()),
                 ..utils::CustomerType::default().0
             }),
-            payment_info(None),
+            payment_info(connector.currency, None),
         )
         .await
         .expect("Customer response");
     response.connector_customer.expect("Salt Edge customer id")
 }
 
-async fn assert_sent_to_the_widget(currency: enums::Currency) -> String {
-    let customer_id = new_customer().await;
-    let response = CONNECTOR
-        .make_payment(open_banking(currency), payment_info(Some(customer_id)))
+async fn assert_sent_to_the_widget(connector: &SaltedgeTest) -> String {
+    let customer_id = new_customer(connector).await;
+    let response = connector
+        .make_payment(
+            open_banking(connector.currency),
+            payment_info(connector.currency, Some(customer_id)),
+        )
         .await
         .expect("Payment response");
     assert_eq!(response.status, enums::AttemptStatus::AuthenticationPending);
@@ -139,30 +163,48 @@ async fn assert_sent_to_the_widget(currency: enums::Currency) -> String {
 
 #[actix_web::test]
 async fn should_send_a_eur_payer_to_salt_edges_widget() {
-    assert_sent_to_the_widget(enums::Currency::EUR).await;
+    assert_sent_to_the_widget(&EUR_CONNECTOR).await;
 }
 
 #[actix_web::test]
 async fn should_send_a_gbp_payer_to_salt_edges_widget() {
-    assert_sent_to_the_widget(enums::Currency::GBP).await;
+    assert_sent_to_the_widget(&GBP_CONNECTOR).await;
 }
 
 #[actix_web::test]
 async fn should_keep_a_payment_at_the_widget_waiting_on_sync() {
-    let payment_id = assert_sent_to_the_widget(enums::Currency::EUR).await;
-    let response = CONNECTOR
-        .sync_payment(sync_data(payment_id), payment_info(None))
+    let payment_id = assert_sent_to_the_widget(&EUR_CONNECTOR).await;
+    let response = EUR_CONNECTOR
+        .sync_payment(
+            sync_data(payment_id),
+            payment_info(enums::Currency::EUR, None),
+        )
         .await
         .expect("PSync response");
     assert_eq!(response.status, enums::AttemptStatus::AuthenticationPending);
 }
 
 #[actix_web::test]
+async fn should_refuse_gbp_on_a_eur_account_without_calling_salt_edge() {
+    let error = EUR_CONNECTOR
+        .make_payment(
+            open_banking(enums::Currency::GBP),
+            payment_info(enums::Currency::EUR, Some("1".to_string())),
+        )
+        .await
+        .expect_err("a EUR account has no GBP creditor");
+    assert!(matches!(
+        error.current_context(),
+        router::core::errors::ConnectorError::InvalidConnectorConfig { .. }
+    ));
+}
+
+#[actix_web::test]
 async fn should_refuse_a_currency_without_a_scheme_without_calling_salt_edge() {
-    let error = CONNECTOR
+    let error = EUR_CONNECTOR
         .make_payment(
             open_banking(enums::Currency::PLN),
-            payment_info(Some("1".to_string())),
+            payment_info(enums::Currency::EUR, Some("1".to_string())),
         )
         .await
         .expect_err("PLN has no Salt Edge scheme here");

@@ -136,6 +136,7 @@ pub struct ConnectorAuthentication {
     pub absa_sanlam: Option<BodyKey>,
     pub saferpay: Option<MultiAuthKey>,
     pub saltedge: Option<SignatureKey>,
+    pub saltedge_gbp: Option<SignatureKey>,
     pub santander: Option<BodyKey>,
     pub shift4: Option<HeaderKey>,
     pub sift: Option<HeaderKey>,
