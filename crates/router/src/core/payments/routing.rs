@@ -2446,6 +2446,87 @@ pub async fn refresh_cgraph_cache(
     Ok(cgraph)
 }
 
+/// Whether an account's own `accepted_currencies` let it take this payment. Reads
+/// them as `compile_request_pm_types` does: an empty list restricts nothing, and
+/// of several entries for one payment method type any one is enough. An account
+/// with no entry for the type is left to the constraint graph.
+#[cfg(feature = "v1")]
+fn account_accepts_currency(
+    payment_methods_enabled: &[admin_api::PaymentMethodsEnabled],
+    payment_method_type: api_enums::PaymentMethodType,
+    currency: api_enums::Currency,
+) -> bool {
+    let entries = payment_methods_enabled
+        .iter()
+        .flat_map(|enabled| enabled.payment_method_types.iter().flatten())
+        .filter(|entry| entry.payment_method_type == payment_method_type)
+        .collect::<Vec<_>>();
+
+    entries.is_empty()
+        || entries
+            .iter()
+            .any(|entry| match &entry.accepted_currencies {
+                Some(admin_api::AcceptedCurrencies::EnableOnly(currencies))
+                    if !currencies.is_empty() =>
+                {
+                    currencies.contains(&currency)
+                }
+                Some(admin_api::AcceptedCurrencies::DisableOnly(currencies))
+                    if !currencies.is_empty() =>
+                {
+                    !currencies.contains(&currency)
+                }
+                _ => true,
+            })
+}
+
+/// The accounts whose own currencies exclude this payment. The constraint graph
+/// knows connectors by name, so two accounts of one connector pool their
+/// currencies there: Salt Edge's GBP and EUR accounts both pass for either.
+#[cfg(feature = "v1")]
+async fn accounts_refusing_currency(
+    state: &SessionState,
+    key_store: &domain::MerchantKeyStore,
+    profile_id: &common_utils::id_type::ProfileId,
+    transaction_type: &api_enums::TransactionType,
+    backend_input: &dsl_inputs::BackendInput,
+) -> std::collections::HashSet<common_utils::id_type::MerchantConnectorAccountId> {
+    let payment_method_type = backend_input
+        .payment_method
+        .payment_method_type
+        .filter(|_| matches!(transaction_type, api_enums::TransactionType::Payment));
+    let Some(payment_method_type) = payment_method_type else {
+        return std::collections::HashSet::new();
+    };
+
+    let accounts = match get_active_merchant_connector_accounts(state, key_store, profile_id).await
+    {
+        Ok(accounts) => accounts,
+        Err(err) => {
+            logger::error!(
+                error = ?err,
+                "euclid_routing: failed to fetch accounts for their accepted currencies; \
+                 leaving the choice to the constraint graph"
+            );
+            return std::collections::HashSet::new();
+        }
+    };
+
+    accounts
+        .into_iter()
+        .filter_map(|account| {
+            let id = account.get_id();
+            let graph_data = admin_api::MCACGraphData::foreign_try_from(account).ok()?;
+            let accepts = account_accepts_currency(
+                graph_data.payment_methods_enabled.as_deref().unwrap_or(&[]),
+                payment_method_type,
+                backend_input.payment.currency,
+            );
+            (!accepts).then_some(id)
+        })
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn perform_cgraph_filtering(
     state: &SessionState,
@@ -2457,6 +2538,18 @@ pub async fn perform_cgraph_filtering(
     transaction_type: &api_enums::TransactionType,
     active_mca_ids: &std::collections::HashSet<common_utils::id_type::MerchantConnectorAccountId>,
 ) -> RoutingResult<Vec<routing_types::RoutableConnectorChoice>> {
+    #[cfg(feature = "v1")]
+    let refusing_currency = accounts_refusing_currency(
+        state,
+        key_store,
+        profile_id,
+        transaction_type,
+        &backend_input,
+    )
+    .await;
+    #[cfg(feature = "v2")]
+    let refusing_currency = std::collections::HashSet::new();
+
     let context = euclid_graph::AnalysisContext::from_dir_values(
         backend_input
             .into_context()
@@ -2491,7 +2584,7 @@ pub async fn perform_cgraph_filtering(
         let mca_active = choice
             .merchant_connector_id
             .as_ref()
-            .map(|id| active_mca_ids.contains(id))
+            .map(|id| active_mca_ids.contains(id) && !refusing_currency.contains(id))
             .unwrap_or(false);
 
         if cgraph_eligible && filter_eligible && mca_active {
