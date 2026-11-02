@@ -590,7 +590,10 @@ pub struct SaltedgePaymentResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SaltedgePayment {
     id: String,
-    status: SaltedgePaymentStatus,
+    /// Salt Edge has answered `null` here for a payment still under way, though
+    /// its docs list no such status.
+    #[serde(default)]
+    status: Option<SaltedgePaymentStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     raw_provider_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -600,6 +603,12 @@ pub struct SaltedgePayment {
 }
 
 impl SaltedgePayment {
+    /// No status says no more than one we do not know, so the payment waits for
+    /// the next lookup or callback.
+    fn attempt_status(&self) -> enums::AttemptStatus {
+        attempt_status(self.status.unwrap_or(SaltedgePaymentStatus::Unknown))
+    }
+
     fn error_response(&self, http_code: u16) -> ErrorResponse {
         ErrorResponse {
             status_code: http_code,
@@ -633,7 +642,7 @@ impl<F, T> TryFrom<ResponseRouterData<F, SaltedgePaymentResponse, T, PaymentsRes
         item: ResponseRouterData<F, SaltedgePaymentResponse, T, PaymentsResponseData>,
     ) -> Result<Self, Self::Error> {
         let payment = item.response.data;
-        let status = attempt_status(payment.status);
+        let status = payment.attempt_status();
 
         if status == enums::AttemptStatus::Failure {
             return Ok(Self {
@@ -776,7 +785,7 @@ impl SaltedgeWebhookBody {
         Ok(SaltedgePaymentResponse {
             data: SaltedgePayment {
                 id: self.data.payment_id.ok_or_else(not_a_payment)?,
-                status: self.data.status.ok_or_else(not_a_payment)?,
+                status: Some(self.data.status.ok_or_else(not_a_payment)?),
                 raw_provider_status: self.data.raw_provider_status,
                 error_class: self.data.error_class,
                 error_message: self.data.error_message,
@@ -1015,6 +1024,16 @@ mod tests {
     }
 
     #[test]
+    fn a_lookup_with_a_null_status_is_pending() {
+        // The shape Salt Edge answered with on 2026-10-28.
+        let payment: SaltedgePaymentResponse = serde_json::from_str(
+            r#"{"data":{"id":"1","customer_id":"2","status":null,"raw_provider_status":null,"last_attempt":{"id":"3","custom_fields":{"reference":"pay_1_1"}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(payment.data.attempt_status(), AttemptStatus::Pending);
+    }
+
+    #[test]
     fn a_description_keeps_only_what_banks_accept() {
         assert_eq!(
             payment_description(Some("Order #42: café & co"), "pay-1"),
@@ -1121,6 +1140,6 @@ mod tests {
         let as_lookup: SaltedgePaymentResponse =
             serde_json::from_value(serde_json::to_value(resource).unwrap()).unwrap();
         assert_eq!(as_lookup.data.id, "111");
-        assert_eq!(as_lookup.data.status, SaltedgePaymentStatus::Settled);
+        assert_eq!(as_lookup.data.status, Some(SaltedgePaymentStatus::Settled));
     }
 }
