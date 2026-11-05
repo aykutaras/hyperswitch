@@ -400,6 +400,19 @@ pub fn get_base_url(state: &SessionState) -> &str {
     }
 }
 
+/// The dashboard an email's links open: the theme's organisation's own when
+/// the deployment gives it one (`theme.organization_hosts`), else the
+/// platform's. Never from anything a user can set: the links carry tokens.
+pub fn get_base_url_for_theme(
+    state: &SessionState,
+    theme: Option<&diesel_models::user::theme::Theme>,
+) -> String {
+    theme
+        .and_then(|theme| theme.org_id.as_ref())
+        .and_then(|org_id| state.conf.theme.organization_hosts.dashboard_url(org_id))
+        .unwrap_or_else(|| get_base_url(state).to_owned())
+}
+
 #[cfg(feature = "v1")]
 #[instrument(skip_all)]
 pub async fn build_cloned_connector_create_request(

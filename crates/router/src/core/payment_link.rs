@@ -680,12 +680,76 @@ pub fn extract_payment_link_config(
     )
 }
 
+/// The colour and logo a payment link takes when neither its request nor its
+/// profile names one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentLinkDefaultLook {
+    pub theme: String,
+    pub logo: String,
+}
+
+impl Default for PaymentLinkDefaultLook {
+    fn default() -> Self {
+        Self {
+            theme: DEFAULT_BACKGROUND_COLOR.to_string(),
+            logo: DEFAULT_MERCHANT_LOGO.to_string(),
+        }
+    }
+}
+
+impl PaymentLinkDefaultLook {
+    /// From a theme's email colour and logo, each kept only when set.
+    pub fn from_theme(theme: Option<&diesel_models::user::theme::Theme>) -> Self {
+        let default = Self::default();
+        let set = |value: Option<&String>| value.filter(|value| !value.is_empty()).cloned();
+        Self {
+            theme: set(theme.map(|theme| &theme.email_primary_color)).unwrap_or(default.theme),
+            logo: set(theme.map(|theme| &theme.email_entity_logo_url)).unwrap_or(default.logo),
+        }
+    }
+}
+
+/// The default look of a profile's payment links: the most specific theme for
+/// the profile (its own, its merchant's, organisation's or tenant's), so a
+/// white-label organisation's links look like its dashboard and emails. A
+/// theme that cannot be read never fails the payment: the link then takes
+/// the usual defaults.
+pub async fn get_payment_link_default_look(
+    state: &SessionState,
+    org_id: &common_utils::id_type::OrganizationId,
+    merchant_id: &common_utils::id_type::MerchantId,
+    profile_id: &common_utils::id_type::ProfileId,
+) -> PaymentLinkDefaultLook {
+    let lineage = common_utils::types::user::ThemeLineage::new(
+        common_enums::EntityType::Profile,
+        state.tenant.tenant_id.clone(),
+        org_id.clone(),
+        merchant_id.clone(),
+        profile_id.clone(),
+    );
+    let theme = match state
+        .store
+        .find_most_specific_theme_in_lineage(lineage)
+        .await
+    {
+        Ok(theme) => Some(theme),
+        Err(error) => {
+            if !error.current_context().is_db_not_found() {
+                logger::warn!(?error, "payment link: no theme for its default look");
+            }
+            None
+        }
+    };
+    PaymentLinkDefaultLook::from_theme(theme.as_ref())
+}
+
 pub fn get_payment_link_config_based_on_priority(
     payment_create_link_config: Option<api_models::payments::PaymentCreatePaymentLinkConfig>,
     business_link_config: Option<diesel_models::business_profile::BusinessPaymentLinkConfig>,
     processor: &domain::Processor,
     default_domain_name: String,
     payment_link_config_id: Option<String>,
+    default_look: PaymentLinkDefaultLook,
 ) -> Result<(PaymentLinkConfig, String), error_stack::Report<errors::ApiErrorResponse>> {
     let merchant_name = processor
         .get_account()
@@ -732,8 +796,8 @@ pub fn get_payment_link_config_based_on_priority(
     ) = get_payment_link_config_value!(
         payment_create_link_config,
         business_theme_configs,
-        (theme, DEFAULT_BACKGROUND_COLOR.to_string()),
-        (logo, DEFAULT_MERCHANT_LOGO.to_string()),
+        (theme, default_look.theme),
+        (logo, default_look.logo),
         (seller_name, merchant_name.clone()),
         (sdk_layout, DEFAULT_SDK_LAYOUT.to_owned()),
         (display_sdk_only, DEFAULT_DISPLAY_SDK_ONLY),

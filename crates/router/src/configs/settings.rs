@@ -1794,6 +1794,11 @@ impl Default for CellInformation {
 pub struct ThemeSettings {
     pub storage: FileStorageConfig,
     pub email_config: EmailThemeConfig,
+    /// White-label organisations' own dashboard and payment link hosts, as
+    /// `<org_id>:<dashboard host>:<payment link host>` entries. Empty: every
+    /// organisation uses the platform's.
+    #[serde(default)]
+    pub organization_hosts: common_utils::types::user::white_label::OrganizationHosts,
 }
 
 fn deserialize_hashmap_inner<K, V>(

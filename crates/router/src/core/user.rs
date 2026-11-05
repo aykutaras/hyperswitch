@@ -103,6 +103,7 @@ pub async fn signup_with_merchant_id(
         .await?;
 
     let theme = theme_utils::get_theme_using_optional_theme_id(&state, theme_id).await?;
+    let base_url = user_utils::get_base_url_for_theme(&state, theme.as_ref());
 
     let email_contents = email_types::ResetPassword {
         recipient_email: user_from_db.get_email().try_into()?,
@@ -118,7 +119,7 @@ pub async fn signup_with_merchant_id(
     let send_email_result = state
         .email_client
         .compose_and_send_email(
-            user_utils::get_base_url(&state),
+            &base_url,
             Box::new(email_contents),
             state.conf.proxy.https_url.as_ref(),
         )
@@ -333,6 +334,7 @@ pub async fn connect_account(
         let user_from_db: domain::UserFromStorage = found_user.into();
 
         let theme = theme_utils::get_theme_using_optional_theme_id(&state, theme_id).await?;
+        let base_url = user_utils::get_base_url_for_theme(&state, theme.as_ref());
 
         let email_contents = email_types::MagicLink {
             recipient_email: domain::UserEmail::from_pii_email(user_from_db.get_email())?,
@@ -348,7 +350,7 @@ pub async fn connect_account(
         let send_email_result = state
             .email_client
             .compose_and_send_email(
-                user_utils::get_base_url(&state),
+                &base_url,
                 Box::new(email_contents),
                 state.conf.proxy.https_url.as_ref(),
             )
@@ -390,6 +392,7 @@ pub async fn connect_account(
             .await?;
 
         let theme = theme_utils::get_theme_using_optional_theme_id(&state, theme_id).await?;
+        let base_url = user_utils::get_base_url_for_theme(&state, theme.as_ref());
         let theme_config = theme
             .as_ref()
             .map(|theme| theme.email_config())
@@ -406,7 +409,7 @@ pub async fn connect_account(
         let magic_link_result = state
             .email_client
             .compose_and_send_email(
-                user_utils::get_base_url(&state),
+                &base_url,
                 Box::new(magic_link_email),
                 state.conf.proxy.https_url.as_ref(),
             )
@@ -425,7 +428,7 @@ pub async fn connect_account(
             let welcome_email_result = state
                 .email_client
                 .compose_and_send_email(
-                    user_utils::get_base_url(&state),
+                    &base_url,
                     Box::new(welcome_to_community_email),
                     state.conf.proxy.https_url.as_ref(),
                 )
@@ -571,6 +574,7 @@ pub async fn forgot_password(
         .map(domain::UserFromStorage::from)?;
 
     let theme = theme_utils::get_theme_using_optional_theme_id(&state, theme_id).await?;
+    let base_url = user_utils::get_base_url_for_theme(&state, theme.as_ref());
 
     let email_contents = email_types::ResetPassword {
         recipient_email: domain::UserEmail::from_pii_email(user_from_db.get_email())?,
@@ -586,7 +590,7 @@ pub async fn forgot_password(
     state
         .email_client
         .compose_and_send_email(
-            user_utils::get_base_url(&state),
+            &base_url,
             Box::new(email_contents),
             state.conf.proxy.https_url.as_ref(),
         )
@@ -1045,6 +1049,7 @@ async fn handle_existing_user_invitation(
             role_info.get_entity_type(),
         )
         .await?;
+        let base_url = user_utils::get_base_url_for_theme(state, theme.as_ref());
 
         let email_contents = email_types::InviteUser {
             recipient_email: invitee_email,
@@ -1061,7 +1066,7 @@ async fn handle_existing_user_invitation(
         is_email_sent = state
             .email_client
             .compose_and_send_email(
-                user_utils::get_base_url(state),
+                &base_url,
                 Box::new(email_contents),
                 state.conf.proxy.https_url.as_ref(),
             )
@@ -1200,6 +1205,7 @@ async fn handle_new_or_inactive_user_invitation(
             role_info.get_entity_type(),
         )
         .await?;
+        let base_url = user_utils::get_base_url_for_theme(state, theme.as_ref());
 
         let email_contents = email_types::InviteUser {
             recipient_email: invitee_email,
@@ -1215,7 +1221,7 @@ async fn handle_new_or_inactive_user_invitation(
         let send_email_result = state
             .email_client
             .compose_and_send_email(
-                user_utils::get_base_url(state),
+                &base_url,
                 Box::new(email_contents),
                 state.conf.proxy.https_url.as_ref(),
             )
@@ -1351,6 +1357,7 @@ pub async fn resend_invite(
         invitee_role_info.get_entity_type(),
     )
     .await?;
+    let base_url = user_utils::get_base_url_for_theme(&state, theme.as_ref());
 
     let email_contents = email_types::InviteUser {
         recipient_email: invitee_email,
@@ -1370,7 +1377,7 @@ pub async fn resend_invite(
     state
         .email_client
         .compose_and_send_email(
-            user_utils::get_base_url(&state),
+            &base_url,
             Box::new(email_contents),
             state.conf.proxy.https_url.as_ref(),
         )
@@ -2248,6 +2255,7 @@ pub async fn send_verification_mail(
     }
 
     let theme = theme_utils::get_theme_using_optional_theme_id(&state, theme_id).await?;
+    let base_url = user_utils::get_base_url_for_theme(&state, theme.as_ref());
 
     let email_contents = email_types::VerifyEmail {
         recipient_email: domain::UserEmail::from_pii_email(user.email)?,
@@ -2262,7 +2270,7 @@ pub async fn send_verification_mail(
     state
         .email_client
         .compose_and_send_email(
-            user_utils::get_base_url(&state),
+            &base_url,
             Box::new(email_contents),
             state.conf.proxy.https_url.as_ref(),
         )

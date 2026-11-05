@@ -247,7 +247,23 @@ impl<F: Send + Clone + Sync> GetTracker<F, PaymentData<F>, api::PaymentsRequest>
 
         let payment_link_data = match request.payment_link {
             Some(true) => {
-                let default_domain_name = state.base_url.clone();
+                // A white-label organisation's links default to its own host and
+                // its theme's look; the profile's payment_link_config, and the
+                // request's, still come first.
+                let org_id = platform.get_processor().get_account().get_org_id();
+                let default_domain_name = state
+                    .conf
+                    .theme
+                    .organization_hosts
+                    .payment_link_url(org_id)
+                    .unwrap_or_else(|| state.base_url.clone());
+                let default_look = payment_link::get_payment_link_default_look(
+                    state,
+                    org_id,
+                    platform.get_processor().get_account().get_id(),
+                    business_profile.get_id(),
+                )
+                .await;
 
                 let (payment_link_config, domain_name) =
                     payment_link::get_payment_link_config_based_on_priority(
@@ -256,6 +272,7 @@ impl<F: Send + Clone + Sync> GetTracker<F, PaymentData<F>, api::PaymentsRequest>
                         platform.get_processor(),
                         default_domain_name,
                         request.payment_link_config_id.clone(),
+                        default_look,
                     )?;
 
                 create_payment_link(
