@@ -9,7 +9,7 @@
 # runtime stage, so consumer and producer reuse the router's cached layer
 # (measured: router 31m24s, then 19s and 17s).
 #
-# Memory is the constraint (hyperswitch-k8s DEPLOYMENT_GUIDE.md §10):
+# Memory is the constraint:
 #   - `release` links the whole program in one rustc process and was killed at
 #     both 15.7 and 19.6 GB, so this builds `release-fast` (no LTO).
 #   - `release-fast` was SIGKILLed at 11.7 GB and built at 15.7 GB with the
@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 CONNECTOR=${1:-}
 PROFILE=release-fast
 MIN_VM_GB=${MIN_VM_GB:-15}
-# Our images keep the upstream tag this branch was cut from (§10).
+# Our images keep the upstream tag this branch was cut from.
 TAG=${TAG:-$(git describe --tags --abbrev=0 --match 'v[0-9]*')}
 
 fail() { echo "error: $*" >&2; exit 1; }
