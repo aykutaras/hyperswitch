@@ -75,8 +75,7 @@ COPY . .
 # Cache mounts keep cargo's registry and target directory between builds. The
 # build context includes .git (vergen reads it), so any git activity in the
 # checkout changes `COPY . .` and re-runs this step; with the target directory
-# cached, cargo then recompiles only what changed instead of every crate
-# (hyperswitch-k8s DEPLOYMENT_GUIDE.md §10).
+# cached, cargo then recompiles only what changed instead of every crate.
 #
 # A cache mount is not part of the image, so the binaries are copied out in this
 # same step. All of them are staged and BINARY is read only in the runtime
