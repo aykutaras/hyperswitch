@@ -1,4 +1,4 @@
-//! Feature tests against the Pinnacle sandbox (payment-api).
+//! Feature tests against the Pinnacle API's sandbox.
 //!
 //! They call the real sandbox, so they need a token:
 //! `CONNECTOR_AUTH_FILE_PATH` must point at a TOML file with
@@ -8,7 +8,7 @@
 //! Sandbox cards: 5500000000000004 approves, 4242424242424242 declines, and
 //! 4012888888881881 goes through 3DS. Completing 3DS needs a browser (the OTP
 //! decides the outcome), so it is tested from the dashboard, not here; so is
-//! paying on payment-api's checkout page, where card redirect sends the payer.
+//! paying on the Pinnacle API's checkout page, where card redirect sends the payer.
 
 use std::str::FromStr;
 
@@ -88,7 +88,7 @@ fn get_default_payment_info() -> Option<PaymentInfo> {
     payment_info_with_first_name("John")
 }
 
-/// payment-api refuses a second payment with the same card number and amount
+/// The Pinnacle API refuses a second payment with the same card number and amount
 /// within 10 seconds, and these tests run in parallel: each one pays its own amount.
 fn payment_data(card_number: &str, minor_amount: i64) -> Option<types::PaymentsAuthorizeData> {
     Some(types::PaymentsAuthorizeData {
@@ -107,7 +107,7 @@ fn payment_data(card_number: &str, minor_amount: i64) -> Option<types::PaymentsA
     })
 }
 
-/// Card redirect: no card here; payment-api's checkout page takes it. EUR is one
+/// Card redirect: no card here; the Pinnacle API's checkout page takes it. EUR is one
 /// of the four currencies `POST /v1/initiate` accepts.
 fn checkout_data(minor_amount: i64) -> Option<types::PaymentsAuthorizeData> {
     Some(types::PaymentsAuthorizeData {
@@ -158,7 +158,7 @@ async fn should_make_payment() {
     let payment = make_approved_payment(101).await;
     assert!(
         utils::get_connector_transaction_id(payment.response).is_some(),
-        "no payment-api uuid"
+        "no Pinnacle API uuid"
     );
 }
 
@@ -167,7 +167,7 @@ async fn should_make_payment() {
 async fn should_sync_auto_captured_payment() {
     let payment = make_approved_payment(102).await;
     let reference = payment.connector_request_reference_id.clone();
-    let txn_id = utils::get_connector_transaction_id(payment.response).expect("payment-api uuid");
+    let txn_id = utils::get_connector_transaction_id(payment.response).expect("Pinnacle API uuid");
     let response = CONNECTOR
         .sync_payment_with_reference(reference, sync_data(txn_id), get_default_payment_info())
         .await
@@ -183,7 +183,7 @@ async fn should_decline_payment() {
         .expect("Payment response");
     assert_eq!(response.status, enums::AttemptStatus::Failure);
     let error = response.response.unwrap_err();
-    // A decline is a transaction outcome that payment-api answers with 200.
+    // A decline is a transaction outcome that the Pinnacle API answers with 200.
     assert_eq!(error.status_code, 200);
     assert!(error.connector_transaction_id.is_some());
 }
@@ -210,7 +210,7 @@ async fn should_keep_unfinished_3ds_payment_open_on_sync() {
         .await
         .expect("Payment response");
     let reference = payment.connector_request_reference_id.clone();
-    let txn_id = utils::get_connector_transaction_id(payment.response).expect("payment-api uuid");
+    let txn_id = utils::get_connector_transaction_id(payment.response).expect("Pinnacle API uuid");
     let response = CONNECTOR
         .sync_payment_with_reference(reference, sync_data(txn_id), get_default_payment_info())
         .await
@@ -250,7 +250,7 @@ async fn should_keep_an_unpaid_checkout_open_on_sync() {
         .await
         .expect("Payment response");
     let reference = payment.connector_request_reference_id.clone();
-    let txn_id = utils::get_connector_transaction_id(payment.response).expect("payment-api uuid");
+    let txn_id = utils::get_connector_transaction_id(payment.response).expect("Pinnacle API uuid");
     let response = CONNECTOR
         .sync_payment_with_reference(reference, sync_data(txn_id), get_default_payment_info())
         .await
@@ -327,13 +327,13 @@ async fn should_sync_refund() {
     );
 }
 
-// payment-api gives a refund its payment's uuid, which is what a lookup by uuid could
+// The Pinnacle API gives a refund its payment's uuid, which is what a lookup by uuid could
 // get wrong: after a refund, the payment must still sync as charged.
 #[actix_web::test]
 async fn should_sync_payment_after_it_is_refunded() {
     let payment = make_approved_payment(112).await;
     let reference = payment.connector_request_reference_id.clone();
-    let txn_id = utils::get_connector_transaction_id(payment.response).expect("payment-api uuid");
+    let txn_id = utils::get_connector_transaction_id(payment.response).expect("Pinnacle API uuid");
     let refund = CONNECTOR
         .refund_payment(
             txn_id.clone(),
@@ -365,11 +365,11 @@ async fn should_fail_refund_above_payment_amount() {
         .expect("Refund response");
     assert!(
         response.response.is_err(),
-        "payment-api accepted a refund larger than the payment"
+        "The Pinnacle API accepted a refund larger than the payment"
     );
 }
 
-// payment-api accepts only letters and spaces in names for now; it is to be relaxed
+// The Pinnacle API accepts only letters and spaces in names for now; it is to be relaxed
 // there. Until then its 422 has to reach the merchant with the offending field named.
 #[actix_web::test]
 async fn should_pass_on_validation_error_for_hyphenated_name() {

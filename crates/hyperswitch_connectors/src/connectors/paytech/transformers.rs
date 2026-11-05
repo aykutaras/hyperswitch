@@ -134,7 +134,7 @@ pub fn brand_base_url(
 
 /// `paymentType`. The API reference lists the first three; `CHARGEBACK` arrives
 /// in webhooks too, as a payment object of its own whose `parentPaymentId` is
-/// the sale (payment-api, `PayTechPaymentType`). Anything newer is `Unknown`
+/// the sale (as in the Pinnacle API's `PayTechPaymentType`). Anything newer is `Unknown`
 /// rather than a webhook that fails to parse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -568,8 +568,8 @@ pub struct PaytechPaymentResult {
 
 impl PaytechPaymentResult {
     /// PayTech's own message, with the provider's result after it when there is
-    /// one. That field is free text more often than a code (payment-api,
-    /// `mapExternalResultCode`).
+    /// one. That field is free text more often than a code (as in the Pinnacle
+    /// API's `mapExternalResultCode`).
     fn reason(&self) -> Option<String> {
         match (&self.error_message, &self.external_result_code) {
             (Some(message), Some(external)) => {
@@ -714,7 +714,7 @@ impl<F> TryFrom<&PaytechRouterData<&RefundsRouterData<F>>> for PaytechRefundRequ
 }
 
 /// Refunds are asynchronous: they usually come back PENDING and finish by
-/// webhook (payment-api's experience with the same engine).
+/// webhook (the Pinnacle API's experience with the same engine).
 fn refund_status(state: PaytechPaymentState) -> enums::RefundStatus {
     match state {
         PaytechPaymentState::Completed => enums::RefundStatus::Success,
@@ -821,7 +821,7 @@ impl PaytechPaymentResult {
                 IncomingWebhookEvent::RefundFailure
             }
             // Chargebacks are left alone until PayTech says what their states mean:
-            // payment-api notes that a CHARGEBACK carrying DECLINED is a finished
+            // The Pinnacle API notes that a CHARGEBACK carrying DECLINED is a finished
             // dispute, not a declined sale.
             _ => IncomingWebhookEvent::EventNotSupported,
         }

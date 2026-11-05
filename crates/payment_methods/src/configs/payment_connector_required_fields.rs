@@ -1391,7 +1391,7 @@ impl RequiredFields {
                                 ),
                             ),
                             (
-                                // payment-api's checkout page: the card payment's payer
+                                // The Pinnacle API's checkout page: the card payment's payer
                                 // details, which `POST /v1/initiate` requires too.
                                 Connector::Pinnacle,
                                 fields(

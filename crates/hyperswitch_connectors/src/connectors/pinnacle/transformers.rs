@@ -34,9 +34,9 @@ impl<T> From<(StringMajorUnit, T)> for PinnacleRouterData<T> {
     }
 }
 
-/// The payment-api endpoint an authorization goes to. A card Hyperswitch holds
+/// The Pinnacle API endpoint an authorization goes to. A card Hyperswitch holds
 /// is paid server to server (`POST /v1/payment`). Card redirect opens
-/// payment-api's own checkout page instead (`POST /v1/initiate`), where the
+/// the Pinnacle API's own checkout page instead (`POST /v1/initiate`), where the
 /// payer enters the card: Hyperswitch never sees it.
 pub fn authorize_path(payment_method_data: &PaymentMethodData) -> &'static str {
     match payment_method_data {
@@ -89,7 +89,7 @@ impl TryFrom<&PaymentsAuthorizeRouterData> for PinnaclePayer {
     }
 }
 
-/// `POST /v1/payment`. payment-api decides on 3DS itself; no field asks for it or skips it.
+/// `POST /v1/payment`. The Pinnacle API decides on 3DS itself; no field asks for it or skips it.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PinnacleCardPaymentRequest {
@@ -107,7 +107,7 @@ pub struct PinnacleCardPaymentRequest {
     payer: PinnaclePayer,
 }
 
-/// `POST /v1/initiate`: the card payment's fields without the card. payment-api
+/// `POST /v1/initiate`: the card payment's fields without the card. The Pinnacle API
 /// answers `PENDING` with `redirectUrl`, its checkout page, which takes the
 /// card, runs 3DS and sends the payer back to `returnUrl`. It has no `ip`
 /// field: the page sees the payer itself.
@@ -187,7 +187,7 @@ impl TryFrom<&ConnectorAuthType> for PinnacleAuthType {
 }
 
 /// Per-account settings from the connector's metadata (the dashboard's
-/// connector form). payment-api resolves the white-label tenant from the host
+/// connector form). The Pinnacle API resolves the white-label tenant from the host
 /// it is called on, so `platform_url` is how an account picks its tenant, the
 /// field Archipel uses for its per-account endpoint. Unset, the deployment's
 /// `connectors.pinnacle.base_url` is used.
@@ -262,7 +262,7 @@ pub fn tenant_base_url(
         .to_string())
 }
 
-/// payment-api's transaction status. `DECLINED`, `CANCELLED` and `ERROR` are final.
+/// The Pinnacle API's transaction status. `DECLINED`, `CANCELLED` and `ERROR` are final.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum PinnacleTransactionStatus {
@@ -274,7 +274,7 @@ pub enum PinnacleTransactionStatus {
     Error,
 }
 
-/// The attempt's status from payment-api's, given whether the answer carries a
+/// The attempt's status from the Pinnacle API's, given whether the answer carries a
 /// `redirectUrl` and the attempt's status before it.
 fn attempt_status(
     status: PinnacleTransactionStatus,
@@ -283,14 +283,14 @@ fn attempt_status(
 ) -> enums::AttemptStatus {
     match status {
         PinnacleTransactionStatus::Approved => enums::AttemptStatus::Charged,
-        // payment-api sends the payer to a page of its own: 3DS for a card payment
+        // The Pinnacle API sends the payer to a page of its own: 3DS for a card payment
         // (WAITING), or the checkout page for card redirect (PENDING).
         PinnacleTransactionStatus::Waiting | PinnacleTransactionStatus::Pending if has_redirect => {
             enums::AttemptStatus::AuthenticationPending
         }
-        // A status lookup carries no redirectUrl. While payment-api still waits on 3DS
+        // A status lookup carries no redirectUrl. While the Pinnacle API still waits on 3DS
         // or on the checkout page, the payer has not finished there: the payment still
-        // needs their action. payment-api never gives up on one of these, so it stays
+        // needs their action. The Pinnacle API never gives up on one of these, so it stays
         // waiting for good if the payer never comes back; nothing here or there turns
         // it into a failure.
         PinnacleTransactionStatus::Waiting | PinnacleTransactionStatus::Pending
@@ -415,7 +415,7 @@ impl<F> TryFrom<&PinnacleRouterData<&RefundsRouterData<F>>> for PinnacleRefundRe
 }
 
 /// Body of `POST /v1/refund`, and of `GET /v1/payment/status` for the refund's reference.
-/// Its `uuid` is the payment's: payment-api copies the payment row to make the refund.
+/// Its `uuid` is the payment's: the Pinnacle API copies the payment row to make the refund.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PinnacleRefundResponse {
@@ -475,7 +475,7 @@ impl<F> TryFrom<RefundsResponseRouterData<F, PinnacleRefundResponse>> for Refund
     }
 }
 
-/// payment-api renders every error as `{"status": "ERROR", "message": ...}`, adding
+/// The Pinnacle API renders every error as `{"status": "ERROR", "message": ...}`, adding
 /// `errors` (field name to messages) when validation fails.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PinnacleErrorResponse {
@@ -509,7 +509,7 @@ impl PinnacleErrorResponse {
     }
 }
 
-/// Body of payment-api's `transaction.status_changed` notification: the transaction's
+/// Body of the Pinnacle API's `transaction.status_changed` notification: the transaction's
 /// own fields at the top level, the same ones a status lookup returns, beside
 /// `transaction` and `customerInfo` copies we do not need. Serialised back for the
 /// payment or refund flow to read, so the names have to stay as they arrive.
@@ -527,7 +527,7 @@ pub struct PinnacleWebhookBody {
     failure_code: Option<String>,
 }
 
-/// payment-api's operation for a refund. Everything else is a payment.
+/// The Pinnacle API's operation for a refund. Everything else is a payment.
 const REFUND_OPERATION: &str = "REFUND";
 
 impl PinnacleWebhookBody {
@@ -551,7 +551,7 @@ impl PinnacleWebhookBody {
                 IncomingWebhookEvent::PaymentIntentSuccess
             }
             (false, _, true) => IncomingWebhookEvent::PaymentIntentFailure,
-            // PENDING and WAITING say nothing new. payment-api does not notify while a
+            // PENDING and WAITING say nothing new. The Pinnacle API does not notify while a
             // 3DS payment is still waiting: its listener skips the `3D` operation.
             (true, _, false) => IncomingWebhookEvent::EventNotSupported,
             (false, _, false) => IncomingWebhookEvent::PaymentIntentProcessing,
@@ -579,7 +579,7 @@ impl PinnacleWebhookBody {
     }
 }
 
-/// What payment-api signs: six fields of the payload plus the request id and timestamp
+/// What the Pinnacle API signs: six fields of the payload plus the request id and timestamp
 /// from the headers, as JSON with the keys sorted and an HMAC-SHA256 over it
 /// (`notification-module`, `IpnSignature::generate`). The values are taken from the body
 /// as they arrived, so a number stays a number and a string stays a string. The keys are
@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn the_checkout_answer_is_read_with_its_link() {
-        // payment-api's documented answer to POST /v1/initiate (openapi.yaml).
+        // The Pinnacle API's documented answer to POST /v1/initiate (openapi.yaml).
         let response: PinnacleTransactionResponse = serde_json::from_value(serde_json::json!({
             "uuid": "81c34685-bd18-4e52-a1b1-bc842946ca18",
             "referenceNo": "ORD-2025-12345",

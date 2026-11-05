@@ -863,7 +863,7 @@ mod tests {
     const SIGNING_KEY: &[u8] = b"test-signing-key";
     const BODY: &[u8] =
         br#"{"id":"9e9003d7f3324fc6828481c665d8bab5","paymentType":"DEPOSIT","state":"COMPLETED"}"#;
-    /// Computed outside Rust, the way PayTech and payment-api do it:
+    /// Computed outside Rust, the way PayTech and the Pinnacle API do it:
     /// `hmac.new(SIGNING_KEY, BODY, hashlib.sha256).hexdigest()`.
     const SIGNATURE: &str = "48d2b8bac50c303d489c558200c548960b6d8ed1f567a16e35f8d877a6dbfa15";
 

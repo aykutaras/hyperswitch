@@ -61,7 +61,7 @@ impl Pinnacle {
         }
     }
 
-    /// A payment-api endpoint for one merchant connector account: on the
+    /// A Pinnacle API endpoint for one merchant connector account: on the
     /// white-label tenant its metadata names, else on the deployment's default
     /// (`pinnacle::tenant_base_url`).
     fn api_url(
@@ -166,7 +166,7 @@ impl ConnectorCommon for Pinnacle {
         event_builder.map(|i| i.set_response_body(&response));
         router_env::logger::info!(connector_response=?response);
 
-        // payment-api has no error codes; the HTTP status is what tells its errors apart.
+        // The Pinnacle API has no error codes; the HTTP status is what tells its errors apart.
         Ok(ErrorResponse {
             status_code: res.status_code,
             code: res.status_code.to_string(),
@@ -318,9 +318,9 @@ impl ConnectorIntegration<PSync, PaymentsSyncData, PaymentsResponseData> for Pin
         req: &PaymentsSyncRouterData,
         connectors: &Connectors,
     ) -> CustomResult<String, errors::ConnectorError> {
-        // By our own reference, not by uuid: payment-api copies a payment's uuid onto its
+        // By our own reference, not by uuid: the Pinnacle API copies a payment's uuid onto its
         // refunds, so a lookup by uuid can return a refund. This is the reference the payment
-        // was created with, unique per attempt, and payment-api returns the latest
+        // was created with, unique per attempt, and the Pinnacle API returns the latest
         // transaction carrying it.
         Ok(format!(
             "{}?referenceNo={}",
@@ -676,7 +676,7 @@ static PINNACLE_SUPPORTED_PAYMENT_METHODS: LazyLock<SupportedPaymentMethods> =
                 ),
             },
         );
-        // payment-api's own checkout page takes the card (`POST /v1/initiate`).
+        // The Pinnacle API's own checkout page takes the card (`POST /v1/initiate`).
         pinnacle_supported_payment_methods.add(
             enums::PaymentMethod::CardRedirect,
             enums::PaymentMethodType::CardRedirect,
@@ -693,7 +693,7 @@ static PINNACLE_SUPPORTED_PAYMENT_METHODS: LazyLock<SupportedPaymentMethods> =
 
 static PINNACLE_CONNECTOR_INFO: ConnectorInfo = ConnectorInfo {
     display_name: "Pinnacle",
-    description: "Pinnacle payment-api: card payments with 3D Secure, on the payment form or payment-api's checkout page, and refunds",
+    description: "Pinnacle API: card payments with 3D Secure, on the payment form or the Pinnacle API's checkout page, and refunds",
     connector_type: enums::HyperswitchConnectorCategory::PaymentGateway,
     integration_status: enums::ConnectorIntegrationStatus::Live,
 };
