@@ -238,6 +238,17 @@ where
             .switch()
         })?;
     session_state.add_request_id(request_id.clone());
+    // A request on a white-label brand's API or payment link host builds its
+    // URLs (redirects, return and webhook URLs) on the brand's API host
+    // instead of the tenant's. Only the hosts the deployment lists count.
+    if let Some(brand_api_url) = request
+        .headers()
+        .get(actix_web::http::header::HOST)
+        .and_then(|host| host.to_str().ok())
+        .and_then(|host| state.conf.theme.organization_hosts.api_url_for_host(host))
+    {
+        session_state.base_url = brand_api_url;
+    }
     let mut request_state = session_state.get_req_state();
 
     request_state.event_context.record_info(request_id.clone());

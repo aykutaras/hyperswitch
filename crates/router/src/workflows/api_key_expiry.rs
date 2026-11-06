@@ -84,6 +84,7 @@ impl ProcessTrackerWorkflow<SessionState> for ApiKeyExpiryWorkflow {
             logger::error!(?err, "Failed to get theme");
             errors::ProcessTrackerError::EApiErrorResponse
         })?;
+        let base_url = user_utils::get_base_url_for_theme(state, theme.as_ref());
 
         let email_contents = ApiKeyExpiryReminder {
             recipient_email: UserEmail::from_pii_email(email_id).map_err(|error| {
@@ -107,7 +108,7 @@ impl ProcessTrackerWorkflow<SessionState> for ApiKeyExpiryWorkflow {
             .email_client
             .clone()
             .compose_and_send_email(
-                user_utils::get_base_url(state),
+                &base_url,
                 Box::new(email_contents),
                 state.conf.proxy.https_url.as_ref(),
             )

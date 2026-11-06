@@ -1794,9 +1794,10 @@ impl Default for CellInformation {
 pub struct ThemeSettings {
     pub storage: FileStorageConfig,
     pub email_config: EmailThemeConfig,
-    /// White-label organisations' own dashboard and payment link hosts, as
-    /// `<org_id>:<dashboard host>:<payment link host>` entries. Empty: every
-    /// organisation uses the platform's.
+    /// White-label organisations' own domains, as `<org_id>:<domain>` entries:
+    /// their dashboard, payment link, API and SDK hosts are `app.`, `pay.`,
+    /// `api.` and `sdk.` in front of it. Empty: every organisation uses the
+    /// platform's.
     #[serde(default)]
     pub organization_hosts: common_utils::types::user::white_label::OrganizationHosts,
 }

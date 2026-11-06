@@ -40,6 +40,17 @@ use crate::{
     },
 };
 
+/// The SDK the page loads: on a white-label brand's host, the brand's own SDK
+/// host, so that the page's calls go to the brand's API too.
+fn get_sdk_url(state: &SessionState) -> url::Url {
+    state
+        .conf
+        .theme
+        .organization_hosts
+        .sdk_url_for_api_url(&state.base_url, &state.conf.payment_link.sdk_url)
+        .unwrap_or_else(|| state.conf.payment_link.sdk_url.clone())
+}
+
 fn get_redirection_log_endpoint(base_url: &str) -> RouterResult<url::Url> {
     format!(
         "{}/{}",
@@ -415,7 +426,7 @@ pub async fn initiate_secure_payment_link_flow(
             let html_meta_tags = get_meta_tags_html(&link_details);
             let payment_link_data = services::PaymentLinkFormData {
                 js_script,
-                sdk_url: state.conf.payment_link.sdk_url.clone(),
+                sdk_url: get_sdk_url(&state),
                 css_script,
                 html_meta_tags,
                 redirection_log_endpoint: Some(get_redirection_log_endpoint(&state.base_url)?),
@@ -489,7 +500,7 @@ pub async fn initiate_payment_link_flow(
             let html_meta_tags = get_meta_tags_html(&payment_details);
             let payment_link_data = services::PaymentLinkFormData {
                 js_script,
-                sdk_url: state.conf.payment_link.sdk_url.clone(),
+                sdk_url: get_sdk_url(&state),
                 css_script,
                 html_meta_tags,
                 redirection_log_endpoint: Some(get_redirection_log_endpoint(&state.base_url)?),
