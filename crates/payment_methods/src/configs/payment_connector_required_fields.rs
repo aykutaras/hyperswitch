@@ -1782,6 +1782,9 @@ fn get_cards_required_fields() -> HashMap<Connector, RequiredFieldFinal> {
             Connector::Payme,
             fields(vec![], vec![], [email(), card_with_name()].concat()),
         ),
+        // The target's processor decides what else it needs; the merchant's profile
+        // collects billing details to match.
+        (Connector::Hyperswitch, fields(vec![], card_basic(), vec![])),
         (Connector::Paypal, fields(vec![], card_basic(), vec![])),
         (Connector::Payu, fields(vec![], card_basic(), vec![])),
         (

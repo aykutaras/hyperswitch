@@ -9654,3 +9654,51 @@ placeholder = "Empty: hide"
 required = false
 type = "Select"
 options = ["hide", "show"]
+
+[hyperswitch]
+[[hyperswitch.credit]]
+  payment_method_type = "Visa"
+[[hyperswitch.credit]]
+  payment_method_type = "Mastercard"
+[[hyperswitch.credit]]
+  payment_method_type = "AmericanExpress"
+[[hyperswitch.credit]]
+  payment_method_type = "Discover"
+[[hyperswitch.credit]]
+  payment_method_type = "JCB"
+[[hyperswitch.credit]]
+  payment_method_type = "DinersClub"
+[[hyperswitch.credit]]
+  payment_method_type = "UnionPay"
+[[hyperswitch.debit]]
+  payment_method_type = "Visa"
+[[hyperswitch.debit]]
+  payment_method_type = "Mastercard"
+[[hyperswitch.debit]]
+  payment_method_type = "AmericanExpress"
+[[hyperswitch.debit]]
+  payment_method_type = "Discover"
+[[hyperswitch.debit]]
+  payment_method_type = "JCB"
+[[hyperswitch.debit]]
+  payment_method_type = "DinersClub"
+[[hyperswitch.debit]]
+  payment_method_type = "UnionPay"
+[[hyperswitch.card_redirect]]
+  payment_method_type = "card_redirect"
+[hyperswitch.connector_auth.HeaderKey]
+api_key = "API key (the target merchant's secret key)"
+[hyperswitch.connector_webhook_details]
+merchant_secret = "Payment response hash key (the target profile's)"
+[hyperswitch.metadata.platform_url]
+name = "platform_url"
+label = "Platform URL (the target's API)"
+placeholder = "https://api.platform.example"
+required = true
+type = "Text"
+[hyperswitch.metadata.profile_id]
+name = "profile_id"
+label = "Profile ID on the target"
+placeholder = "Empty: the target merchant's default profile"
+required = false
+type = "Text"

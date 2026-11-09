@@ -449,6 +449,9 @@ impl ConnectorData {
                 enums::Connector::Shift4 => {
                     Ok(ConnectorEnum::Old(Box::new(connector::Shift4::new())))
                 }
+                enums::Connector::Hyperswitch => {
+                    Ok(ConnectorEnum::Old(Box::new(connector::Hyperswitch::new())))
+                }
                 enums::Connector::Saltedge => {
                     Ok(ConnectorEnum::Old(Box::new(connector::Saltedge::new())))
                 }

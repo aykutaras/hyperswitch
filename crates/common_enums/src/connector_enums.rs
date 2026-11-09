@@ -187,6 +187,7 @@ pub enum Connector {
     Saferpay,
     Santander,
     Shift4,
+    Hyperswitch,
     Saltedge,
     Paytech,
     Pinnacle,
@@ -445,6 +446,7 @@ impl Connector {
             | Self::Saferpay
             | Self::Santander
             | Self::Shift4
+            | Self::Hyperswitch
             | Self::Saltedge
             | Self::Paytech
             | Self::Pinnacle

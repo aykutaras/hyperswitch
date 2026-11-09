@@ -556,6 +556,13 @@ impl ConnectorAuthTypeAndMetadataValidation<'_> {
                 shift4::transformers::Shift4AuthType::try_from(self.auth_type)?;
                 Ok(())
             }
+            api_enums::Connector::Hyperswitch => {
+                hyperswitch::transformers::HyperswitchAuthType::try_from(self.auth_type)?;
+                hyperswitch::transformers::HyperswitchConnectorMetadata::try_from(
+                    self.connector_meta_data,
+                )?;
+                Ok(())
+            }
             api_enums::Connector::Saltedge => {
                 saltedge::transformers::SaltedgeAuthType::try_from(self.auth_type)?;
                 saltedge::transformers::SaltedgeConnectorMetadata::try_from(
