@@ -354,7 +354,7 @@ pub(crate) fn get_outgoing_webhook_request(
             ),
             (
                 reqwest::header::USER_AGENT.to_string(),
-                consts::USER_AGENT.to_string().into(),
+                consts::WEBHOOK_USER_AGENT.to_string().into(),
             ),
         ];
 

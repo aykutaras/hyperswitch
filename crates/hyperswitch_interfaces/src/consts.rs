@@ -9,8 +9,11 @@ pub const NO_ERROR_CODE: &str = "No error code";
 /// Accepted format for request
 pub const ACCEPT_HEADER: &str = "text/html,application/json";
 
-/// User agent for request send from backend server
-pub const USER_AGENT: &str = "Hyperswitch-Backend-Server";
+/// User agent for request send from backend server: neutral, since the other side sees it.
+pub const USER_AGENT: &str = "Backend/1.0";
+
+/// User agent of the webhooks sent to merchants: neutral, since merchants see it.
+pub const WEBHOOK_USER_AGENT: &str = "Webhooks/1.0";
 
 /// Request timeout error code
 pub const REQUEST_TIMEOUT_ERROR_CODE: &str = "TIMEOUT";

@@ -925,9 +925,7 @@ pub mod core {
                 ),
                 (
                     "User-Agent".to_string(),
-                    hyperswitch_masking::Maskable::new_normal(
-                        "Hyperswitch-Backend-Server".to_string(),
-                    ),
+                    hyperswitch_masking::Maskable::new_normal("Backend/1.0".to_string()),
                 ),
             ];
 
