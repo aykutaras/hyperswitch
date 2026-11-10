@@ -721,7 +721,7 @@ function renderPaymentDetails(paymentDetails) {
   var merchantImageNode = document.getElementById(
     "hyper-checkout-merchant-image"
   );
-  if (merchantImageNode instanceof HTMLDivElement) {
+  if (merchantImageNode instanceof HTMLDivElement && paymentDetails.merchant_logo) {
     merchantImageNode.prepend(merchantLogoNode);
   }
   var footerNode = document.getElementById("hyper-checkout-payment-footer");

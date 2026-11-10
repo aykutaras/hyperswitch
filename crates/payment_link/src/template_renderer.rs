@@ -306,6 +306,15 @@ mod tests {
         assert!(page.contains("<title>Payment</title>"));
     }
 
+    /// The default logo is stored in each link's config, which is checked for
+    /// injection when the link is created.
+    #[test]
+    fn the_default_logo_passes_the_link_configs_injection_check() {
+        assert!(!common_utils::validation::contains_potential_xss_or_sqli(
+            DEFAULT_MERCHANT_LOGO
+        ));
+    }
+
     #[test]
     fn a_status_page_names_no_outside_host() {
         for status in ["succeeded", "processing", "failed", "expired"] {

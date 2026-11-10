@@ -318,7 +318,10 @@ function renderStatusDetails(paymentDetails) {
     "hyper-checkout-status-header"
   );
   if (statusHeaderNode instanceof HTMLDivElement) {
-    statusHeaderNode.append(amountNode, merchantLogoNode);
+    statusHeaderNode.append(amountNode);
+    if (paymentDetails.merchant_logo) {
+      statusHeaderNode.append(merchantLogoNode);
+    }
   }
   var statusContentNode = document.getElementById(
     "hyper-checkout-status-content"
