@@ -9686,6 +9686,11 @@ options = ["hide", "show"]
   payment_method_type = "UnionPay"
 [[hyperswitch.card_redirect]]
   payment_method_type = "card_redirect"
+[[hyperswitch.pay_later]]
+  payment_method_type = "klarna"
+  payment_experience = "redirect_to_url"
+[[hyperswitch.bank_redirect]]
+  payment_method_type = "open_banking"
 [hyperswitch.connector_auth.HeaderKey]
 api_key = "API key (the target merchant's secret key)"
 [hyperswitch.connector_webhook_details]

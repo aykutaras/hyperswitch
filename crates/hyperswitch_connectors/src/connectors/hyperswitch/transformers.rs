@@ -5,7 +5,7 @@ use common_enums::enums;
 use common_utils::{crypto::GenerateDigest, request::Method, types::MinorUnit};
 use error_stack::{report, ResultExt};
 use hyperswitch_domain_models::{
-    payment_method_data::{CardRedirectData, PaymentMethodData},
+    payment_method_data::{BankRedirectData, CardRedirectData, PayLaterData, PaymentMethodData},
     router_data::{ConnectorAuthType, ErrorResponse, RouterData},
     router_request_types::{BrowserInformation, ResponseId},
     router_response_types::{PaymentsResponseData, RedirectForm, RefundsResponseData},
@@ -20,7 +20,6 @@ use hyperswitch_interfaces::{
 };
 use hyperswitch_masking::Secret;
 use serde::{Deserialize, Serialize};
-use time::PrimitiveDateTime;
 
 use crate::{
     types::{RefundsResponseRouterData, ResponseRouterData},
@@ -34,9 +33,6 @@ pub const DUPLICATE_ERROR_CODE: &str = "HE_01";
 pub const UNEXPECTED_STATE_ERROR_CODE: &str = "IR_14";
 /// What the target's ids may be: up to 64 of `[A-Za-z0-9_-]`.
 const MAX_REFERENCE_LENGTH: usize = 64;
-/// How long a payment link on the target stays open, in seconds. The router's
-/// payment sync gives up after about 26 minutes, so a link has to close before.
-const PAYMENT_LINK_EXPIRY_SECONDS: u32 = 900;
 
 /// The error a missing or malformed Platform URL gives.
 const PLATFORM_URL_CONFIG: &str =
@@ -213,30 +209,84 @@ pub struct HyperswitchCardPaymentRequest {
     enable_partial_authorization: Option<bool>,
 }
 
+/// A redirect payment method as the target's API names it.
 #[derive(Debug, Serialize)]
-pub struct HyperswitchPaymentLinkConfig {
-    /// Straight back to us once paid, without the target's status page.
-    skip_status_screen: bool,
+pub struct HyperswitchRedirectMethod {
+    payment_method: enums::PaymentMethod,
+    payment_method_type: enums::PaymentMethodType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    payment_experience: Option<enums::PaymentExperience>,
+    payment_method_data: api_models::payments::PaymentMethodData,
 }
 
-/// Card redirect: an unconfirmed payment with a payment link, where the payer
-/// enters the card on the target's own page. We never see the card.
+/// The redirect methods the target confirms at once, or None for any other
+/// payment method data. Klarna's billing email and country also go into its
+/// payment method data, where some of the target's processors read them.
+pub fn redirect_method(
+    payment_method_data: &PaymentMethodData,
+    billing: Option<&api_models::payments::Address>,
+) -> Option<HyperswitchRedirectMethod> {
+    match payment_method_data {
+        // The target routes it to a processor with its own card page, such as
+        // Pinnacle or PayTech there. We never see the card.
+        PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {}) => {
+            Some(HyperswitchRedirectMethod {
+                payment_method: enums::PaymentMethod::CardRedirect,
+                payment_method_type: enums::PaymentMethodType::CardRedirect,
+                payment_experience: None,
+                payment_method_data: api_models::payments::PaymentMethodData::CardRedirect(
+                    api_models::payments::CardRedirectData::CardRedirect {},
+                ),
+            })
+        }
+        PaymentMethodData::PayLater(PayLaterData::KlarnaRedirect {}) => {
+            Some(HyperswitchRedirectMethod {
+                payment_method: enums::PaymentMethod::PayLater,
+                payment_method_type: enums::PaymentMethodType::Klarna,
+                payment_experience: Some(enums::PaymentExperience::RedirectToUrl),
+                payment_method_data: api_models::payments::PaymentMethodData::PayLater(
+                    api_models::payments::PayLaterData::KlarnaRedirect {
+                        billing_email: billing.and_then(|billing| billing.email.clone()),
+                        billing_country: billing
+                            .and_then(|billing| billing.address.as_ref())
+                            .and_then(|address| address.country),
+                    },
+                ),
+            })
+        }
+        PaymentMethodData::BankRedirect(BankRedirectData::OpenBanking { .. }) => {
+            Some(HyperswitchRedirectMethod {
+                payment_method: enums::PaymentMethod::BankRedirect,
+                payment_method_type: enums::PaymentMethodType::OpenBanking,
+                payment_experience: None,
+                payment_method_data: api_models::payments::PaymentMethodData::BankRedirect(
+                    api_models::payments::BankRedirectData::OpenBanking {},
+                ),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Card redirect, Klarna or open banking, confirmed at once: the target answers
+/// with a redirect to its processor's card page, Klarna or the bank, which the
+/// payer follows. No page of the target's comes in between.
 #[derive(Debug, Serialize)]
-pub struct HyperswitchPaymentLinkRequest {
+pub struct HyperswitchRedirectPaymentRequest {
     #[serde(flatten)]
     fields: HyperswitchPaymentFields,
     confirm: bool,
-    payment_link: bool,
-    payment_link_config: HyperswitchPaymentLinkConfig,
-    session_expiry: u32,
-    allowed_payment_method_types: Vec<enums::PaymentMethodType>,
+    #[serde(flatten)]
+    method: HyperswitchRedirectMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    browser_info: Option<BrowserInformation>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum HyperswitchPaymentsRequest {
     Card(Box<HyperswitchCardPaymentRequest>),
-    PaymentLink(HyperswitchPaymentLinkRequest),
+    Redirect(Box<HyperswitchRedirectPaymentRequest>),
 }
 
 impl TryFrom<&HyperswitchRouterData<&PaymentsAuthorizeRouterData>> for HyperswitchPaymentsRequest {
@@ -291,24 +341,21 @@ impl TryFrom<&HyperswitchRouterData<&PaymentsAuthorizeRouterData>> for Hyperswit
                         .filter(|enabled| *enabled),
                 })))
             }
-            PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {}) => {
-                Ok(Self::PaymentLink(HyperswitchPaymentLinkRequest {
-                    fields,
-                    confirm: false,
-                    payment_link: true,
-                    payment_link_config: HyperswitchPaymentLinkConfig {
-                        skip_status_screen: true,
+            other => {
+                let method = redirect_method(other, fields.billing.as_ref()).ok_or_else(|| {
+                    errors::ConnectorError::NotImplemented(
+                        utils::get_unimplemented_payment_method_error_message("hyperswitch"),
+                    )
+                })?;
+                Ok(Self::Redirect(Box::new(
+                    HyperswitchRedirectPaymentRequest {
+                        fields,
+                        confirm: true,
+                        method,
+                        browser_info: router_data.request.browser_info.clone(),
                     },
-                    session_expiry: PAYMENT_LINK_EXPIRY_SECONDS,
-                    allowed_payment_method_types: vec![
-                        enums::PaymentMethodType::Credit,
-                        enums::PaymentMethodType::Debit,
-                    ],
-                }))
+                )))
             }
-            _ => Err(errors::ConnectorError::NotImplemented(
-                utils::get_unimplemented_payment_method_error_message("hyperswitch"),
-            ))?,
         }
     }
 }
@@ -413,11 +460,6 @@ impl HyperswitchNextAction {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HyperswitchPaymentLink {
-    link: String,
-}
-
 /// The target's payment (`PaymentsResponse`), as `POST /payments`, its capture
 /// and cancel, `GET /payments/{id}` and its payment webhooks carry it. Only the
 /// fields read here; serialised back for the webhook's payment sync to read.
@@ -432,14 +474,6 @@ pub struct HyperswitchPaymentsResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_action: Option<HyperswitchNextAction>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub payment_link: Option<HyperswitchPaymentLink>,
-    #[serde(
-        default,
-        with = "common_utils::custom_serde::iso8601::option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub expires_on: Option<PrimitiveDateTime>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_code: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
@@ -453,18 +487,12 @@ pub struct HyperswitchPaymentsResponse {
     pub issuer_error_message: Option<String>,
 }
 
-/// The attempt's status from the target's. `on_payment_link` is a card-redirect
-/// attempt, whose payer is on the target's page while the target waits for a
-/// payment method; `link_expired` is that page closed.
+/// The attempt's status from the target's.
 ///
 /// The router only syncs a payment while it is processing, waits on the payer
 /// or the merchant, or waits for a capture. So nothing maps to a status the
 /// router would stop syncing on while the target is still deciding.
-pub fn attempt_status(
-    status: HyperswitchPaymentStatus,
-    on_payment_link: bool,
-    link_expired: bool,
-) -> enums::AttemptStatus {
+pub fn attempt_status(status: HyperswitchPaymentStatus) -> enums::AttemptStatus {
     use HyperswitchPaymentStatus as Status;
     match status {
         Status::Succeeded => enums::AttemptStatus::Charged,
@@ -476,13 +504,8 @@ pub fn attempt_status(
         Status::PartiallyCaptured => enums::AttemptStatus::PartialCharged,
         Status::PartiallyCapturedAndCapturable => enums::AttemptStatus::PartialChargedAndChargeable,
         Status::PartiallyAuthorizedAndRequiresCapture => enums::AttemptStatus::PartiallyAuthorized,
-        // A payment link waits for the payer until it closes. Anything else that
-        // still waits for a payment method lost it: the target declined it.
-        Status::RequiresPaymentMethod | Status::RequiresConfirmation
-            if on_payment_link && !link_expired =>
-        {
-            enums::AttemptStatus::AuthenticationPending
-        }
+        // Every payment is confirmed at once, so one that waits for a payment
+        // method again lost it: the target declined it.
         Status::RequiresPaymentMethod | Status::RequiresConfirmation => {
             enums::AttemptStatus::Failure
         }
@@ -494,44 +517,19 @@ pub fn attempt_status(
     }
 }
 
-/// Whether a payment link has closed by `now`.
-pub fn link_expired(expires_on: Option<PrimitiveDateTime>, now: PrimitiveDateTime) -> bool {
-    expires_on.is_some_and(|expires_on| now >= expires_on)
-}
-
 impl HyperswitchPaymentsResponse {
-    fn waits_on_payment_method(&self) -> bool {
-        matches!(
-            self.status,
-            HyperswitchPaymentStatus::RequiresPaymentMethod
-                | HyperswitchPaymentStatus::RequiresConfirmation
-        )
-    }
-
     /// Why the payment failed, from the target's error, else its unified error.
-    fn failure(
-        &self,
-        status_code: u16,
-        on_payment_link: bool,
-        status: enums::AttemptStatus,
-    ) -> ErrorResponse {
-        let (code, message) = if on_payment_link && self.waits_on_payment_method() {
-            (
-                "payment_link_expired".to_string(),
-                "The payer did not pay on the target's payment link before it closed".to_string(),
-            )
-        } else {
-            (
-                self.error_code
-                    .clone()
-                    .or_else(|| self.unified_code.clone())
-                    .unwrap_or_else(|| NO_ERROR_CODE.to_string()),
-                self.error_message
-                    .clone()
-                    .or_else(|| self.unified_message.clone())
-                    .unwrap_or_else(|| NO_ERROR_MESSAGE.to_string()),
-            )
-        };
+    fn failure(&self, status_code: u16, status: enums::AttemptStatus) -> ErrorResponse {
+        let code = self
+            .error_code
+            .clone()
+            .or_else(|| self.unified_code.clone())
+            .unwrap_or_else(|| NO_ERROR_CODE.to_string());
+        let message = self
+            .error_message
+            .clone()
+            .or_else(|| self.unified_message.clone())
+            .unwrap_or_else(|| NO_ERROR_MESSAGE.to_string());
         ErrorResponse {
             status_code,
             code,
@@ -547,7 +545,8 @@ impl HyperswitchPaymentsResponse {
         }
     }
 
-    /// Where to send the payer: the target's 3DS redirect, or its payment link.
+    /// Where to send the payer: the target's redirect to 3DS, its processor's
+    /// card page, Klarna or the bank.
     fn redirection(
         &self,
         status: enums::AttemptStatus,
@@ -555,16 +554,15 @@ impl HyperswitchPaymentsResponse {
         if status != enums::AttemptStatus::AuthenticationPending {
             return Ok(None);
         }
-        let url = match (&self.next_action, &self.payment_link) {
-            (Some(next_action), _) => Some(next_action.redirect_url().ok_or_else(|| {
+        let url = match &self.next_action {
+            Some(next_action) => Some(next_action.redirect_url().ok_or_else(|| {
                 report!(errors::ConnectorError::NotSupported {
                     message: "a next action other than a redirect".to_string(),
                     connector: "hyperswitch".into(),
                 })
             })?),
-            (None, Some(payment_link)) => Some(payment_link.link.as_str()),
             // A sync while the payer is still away: they already have the redirect.
-            (None, None) => None,
+            None => None,
         };
         url.map(|url| {
             url::Url::parse(url)
@@ -583,14 +581,7 @@ impl<F, T> TryFrom<ResponseRouterData<F, HyperswitchPaymentsResponse, T, Payment
         item: ResponseRouterData<F, HyperswitchPaymentsResponse, T, PaymentsResponseData>,
     ) -> Result<Self, Self::Error> {
         let response = item.response;
-        // A card-redirect attempt, or any payment the target made with a link.
-        let on_payment_link = item.data.payment_method == enums::PaymentMethod::CardRedirect
-            || response.payment_link.is_some();
-        let status = attempt_status(
-            response.status,
-            on_payment_link,
-            link_expired(response.expires_on, common_utils::date_time::now()),
-        );
+        let status = attempt_status(response.status);
         let minor_amount_captured = response.amount_received.or(item.data.minor_amount_captured);
         let minor_amount_capturable = response
             .amount_capturable
@@ -599,7 +590,7 @@ impl<F, T> TryFrom<ResponseRouterData<F, HyperswitchPaymentsResponse, T, Payment
         if status == enums::AttemptStatus::Failure {
             return Ok(Self {
                 status,
-                response: Err(response.failure(item.http_code, on_payment_link, status)),
+                response: Err(response.failure(item.http_code, status)),
                 ..item.data
             });
         }
@@ -863,15 +854,17 @@ mod tests {
 
     use common_enums::enums::{AttemptStatus, RefundStatus};
     use common_utils::types::MinorUnit;
+    use hyperswitch_domain_models::payment_method_data::{
+        BankRedirectData, CardRedirectData, PayLaterData, PaymentMethodData,
+    };
     use hyperswitch_masking::Secret;
 
     use super::{
-        attempt_status, link_expired, platform_base_url, reference_for_attempt, webhook_event,
+        attempt_status, platform_base_url, redirect_method, reference_for_attempt, webhook_event,
         HyperswitchCard, HyperswitchCardData, HyperswitchCardPaymentRequest,
-        HyperswitchConnectorMetadata, HyperswitchPaymentFields, HyperswitchPaymentLinkConfig,
-        HyperswitchPaymentLinkRequest, HyperswitchPaymentStatus as Status,
-        HyperswitchPaymentsRequest, HyperswitchPaymentsResponse, HyperswitchRefundStatus,
-        HyperswitchWebhookBody,
+        HyperswitchConnectorMetadata, HyperswitchPaymentFields, HyperswitchPaymentStatus as Status,
+        HyperswitchPaymentsRequest, HyperswitchPaymentsResponse, HyperswitchRedirectPaymentRequest,
+        HyperswitchRefundStatus, HyperswitchWebhookBody,
     };
 
     const PLATFORM: &str = "https://api.platform.example";
@@ -996,34 +989,104 @@ mod tests {
             "4111111111111111"
         );
         assert!(json.get("profile_id").is_none());
-        assert!(json.get("payment_link").is_none());
+    }
+
+    fn redirect_request(
+        method: &PaymentMethodData,
+        billing: Option<api_models::payments::Address>,
+    ) -> serde_json::Value {
+        let fields = HyperswitchPaymentFields {
+            billing,
+            ..fields()
+        };
+        let method = redirect_method(method, fields.billing.as_ref()).unwrap();
+        let request =
+            HyperswitchPaymentsRequest::Redirect(Box::new(HyperswitchRedirectPaymentRequest {
+                fields,
+                confirm: true,
+                method,
+                browser_info: None,
+            }));
+        serde_json::to_value(&request).unwrap()
     }
 
     #[test]
-    fn a_card_redirect_opens_a_payment_link_without_a_card() {
-        let request = HyperswitchPaymentsRequest::PaymentLink(HyperswitchPaymentLinkRequest {
-            fields: fields(),
-            confirm: false,
-            payment_link: true,
-            payment_link_config: HyperswitchPaymentLinkConfig {
-                skip_status_screen: true,
-            },
-            session_expiry: 900,
-            allowed_payment_method_types: vec![
-                common_enums::PaymentMethodType::Credit,
-                common_enums::PaymentMethodType::Debit,
-            ],
-        });
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["confirm"], false);
-        assert_eq!(json["payment_link"], true);
-        assert_eq!(json["payment_link_config"]["skip_status_screen"], true);
-        assert_eq!(json["session_expiry"], 900);
-        assert_eq!(
-            json["allowed_payment_method_types"],
-            serde_json::json!(["credit", "debit"])
+    fn a_card_redirect_is_confirmed_at_once_without_a_card() {
+        let json = redirect_request(
+            &PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {}),
+            None,
         );
-        assert!(json.get("payment_method_data").is_none());
+        assert_eq!(json["confirm"], true);
+        assert_eq!(json["payment_method"], "card_redirect");
+        assert_eq!(json["payment_method_type"], "card_redirect");
+        assert_eq!(
+            json["payment_method_data"],
+            serde_json::json!({ "card_redirect": { "card_redirect": {} } })
+        );
+        assert!(json.get("payment_experience").is_none());
+    }
+
+    #[test]
+    fn klarna_is_confirmed_at_once_with_the_billing_email_and_country() {
+        let billing = api_models::payments::Address {
+            address: Some(api_models::payments::AddressDetails {
+                country: Some(common_enums::CountryAlpha2::DE),
+                ..Default::default()
+            }),
+            phone: None,
+            email: Some(common_utils::pii::Email::from_str("payer@brand.example").unwrap()),
+        };
+        let json = redirect_request(
+            &PaymentMethodData::PayLater(PayLaterData::KlarnaRedirect {}),
+            Some(billing),
+        );
+        assert_eq!(json["confirm"], true);
+        assert_eq!(json["payment_method"], "pay_later");
+        assert_eq!(json["payment_method_type"], "klarna");
+        assert_eq!(json["payment_experience"], "redirect_to_url");
+        assert_eq!(
+            json["payment_method_data"],
+            serde_json::json!({ "pay_later": { "klarna_redirect": {
+                "billing_email": "payer@brand.example",
+                "billing_country": "DE",
+            } } })
+        );
+        assert_eq!(json["billing"]["email"], "payer@brand.example");
+    }
+
+    #[test]
+    fn open_banking_is_confirmed_at_once_without_bank_details() {
+        let json = redirect_request(
+            &PaymentMethodData::BankRedirect(BankRedirectData::OpenBanking {
+                iban: None,
+                account_number: None,
+                sort_code: None,
+                account_holder_name: None,
+                additional_details: None,
+                bank_name: None,
+            }),
+            None,
+        );
+        assert_eq!(json["confirm"], true);
+        assert_eq!(json["payment_method"], "bank_redirect");
+        assert_eq!(json["payment_method_type"], "open_banking");
+        assert_eq!(
+            json["payment_method_data"],
+            serde_json::json!({ "bank_redirect": { "open_banking": {} } })
+        );
+        assert!(json.get("payment_experience").is_none());
+    }
+
+    #[test]
+    fn other_redirect_methods_are_not_passed_on() {
+        for method in [
+            PaymentMethodData::PayLater(PayLaterData::KlarnaSdk {
+                token: "token".to_string(),
+            }),
+            PaymentMethodData::PayLater(PayLaterData::AffirmRedirect {}),
+        ] {
+            assert!(redirect_method(&method, None).is_none(), "{method:?}");
+        }
     }
 
     #[test]
@@ -1052,7 +1115,7 @@ mod tests {
                 AttemptStatus::AuthenticationPending,
             ),
         ] {
-            assert_eq!(attempt_status(status, false, false), expected, "{status:?}");
+            assert_eq!(attempt_status(status), expected, "{status:?}");
         }
     }
 
@@ -1064,45 +1127,20 @@ mod tests {
             Status::Review,
             Status::Unknown,
         ] {
-            assert_eq!(attempt_status(status, false, false), AttemptStatus::Pending);
+            assert_eq!(attempt_status(status), AttemptStatus::Pending);
         }
         for status in [Status::Conflicted, Status::RequiresMerchantAction] {
-            assert_eq!(
-                attempt_status(status, false, false),
-                AttemptStatus::Unresolved
-            );
+            assert_eq!(attempt_status(status), AttemptStatus::Unresolved);
         }
     }
 
+    // Every payment is confirmed at once: one waiting for a payment method again
+    // was declined.
     #[test]
-    fn a_payment_link_waits_for_the_payer_until_it_closes() {
-        assert_eq!(
-            attempt_status(Status::RequiresPaymentMethod, true, false),
-            AttemptStatus::AuthenticationPending
-        );
-        assert_eq!(
-            attempt_status(Status::RequiresPaymentMethod, true, true),
-            AttemptStatus::Failure
-        );
-    }
-
-    #[test]
-    fn a_card_payment_still_waiting_for_a_payment_method_failed() {
-        assert_eq!(
-            attempt_status(Status::RequiresPaymentMethod, false, false),
-            AttemptStatus::Failure
-        );
-    }
-
-    #[test]
-    fn a_link_closes_at_its_expiry() {
-        let now = time::macros::datetime!(2026-11-09 12:00);
-        assert!(!link_expired(None, now));
-        assert!(!link_expired(
-            Some(time::macros::datetime!(2026-11-09 12:15)),
-            now
-        ));
-        assert!(link_expired(Some(now), now));
+    fn a_payment_waiting_for_a_payment_method_again_failed() {
+        for status in [Status::RequiresPaymentMethod, Status::RequiresConfirmation] {
+            assert_eq!(attempt_status(status), AttemptStatus::Failure, "{status:?}");
+        }
     }
 
     fn response(json: serde_json::Value) -> HyperswitchPaymentsResponse {
@@ -1137,22 +1175,17 @@ mod tests {
             .is_err());
     }
 
+    // A sync while the payer is still on the processor's page: no new redirect.
     #[test]
-    fn a_payment_link_is_where_the_payer_goes() {
+    fn a_sync_while_the_payer_is_away_has_no_redirect() {
         let response = response(serde_json::json!({
             "payment_id": "pay_abc_1",
-            "status": "requires_payment_method",
-            "payment_link": {
-                "link": "https://pay.platform.example/payment_link/m/pay_abc_1?locale=en",
-                "payment_link_id": "plink_1"
-            },
-            "expires_on": "2026-11-09T12:15:00.000Z"
+            "status": "requires_customer_action"
         }));
-        assert!(response.expires_on.is_some());
         assert!(response
             .redirection(AttemptStatus::AuthenticationPending)
             .unwrap()
-            .is_some());
+            .is_none());
     }
 
     #[test]
@@ -1164,20 +1197,10 @@ mod tests {
             "error_message": "Card declined",
             "unified_code": "UE_9000"
         }));
-        let error = response.failure(200, false, AttemptStatus::Failure);
+        let error = response.failure(200, AttemptStatus::Failure);
         assert_eq!(error.code, "card_declined");
         assert_eq!(error.message, "Card declined");
         assert_eq!(error.connector_transaction_id.as_deref(), Some("pay_abc_1"));
-    }
-
-    #[test]
-    fn a_closed_payment_link_says_so() {
-        let response = response(serde_json::json!({
-            "payment_id": "pay_abc_1",
-            "status": "requires_payment_method"
-        }));
-        let error = response.failure(200, true, AttemptStatus::Failure);
-        assert_eq!(error.code, "payment_link_expired");
     }
 
     #[test]

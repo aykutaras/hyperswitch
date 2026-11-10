@@ -762,9 +762,9 @@ impl ConnectorRedirectResponse for Hyperswitch {
         _json_payload: Option<serde_json::Value>,
         action: PaymentAction,
     ) -> CustomResult<CallConnectorAction, errors::ConnectorError> {
-        // When the payer comes back from the target's 3DS or payment link, look the
-        // outcome up at once. The return's query carries a status, but the
-        // lookup is what decides.
+        // When the payer comes back through the target, from 3DS, a card page,
+        // Klarna or the bank, look the outcome up at once. The return's query
+        // carries a status, but the lookup is what decides.
         match action {
             PaymentAction::PSync
             | PaymentAction::CompleteAuthorize
@@ -887,14 +887,36 @@ static HYPERSWITCH_SUPPORTED_PAYMENT_METHODS: LazyLock<SupportedPaymentMethods> 
             enums::PaymentMethodType::Debit,
             card_details,
         );
-        // The target's payment link takes the card.
+        // Confirmed on the target at once: its processor's own page takes the card.
         hyperswitch_supported_payment_methods.add(
             enums::PaymentMethod::CardRedirect,
             enums::PaymentMethodType::CardRedirect,
             PaymentMethodDetails {
                 mandates: enums::FeatureStatus::NotSupported,
                 refunds: enums::FeatureStatus::Supported,
+                supported_capture_methods: supported_capture_methods.clone(),
+                specific_features: None,
+            },
+        );
+        // Confirmed on the target at once: the payer goes straight to Klarna.
+        hyperswitch_supported_payment_methods.add(
+            enums::PaymentMethod::PayLater,
+            enums::PaymentMethodType::Klarna,
+            PaymentMethodDetails {
+                mandates: enums::FeatureStatus::NotSupported,
+                refunds: enums::FeatureStatus::Supported,
                 supported_capture_methods,
+                specific_features: None,
+            },
+        );
+        // Likewise straight to the bank. A bank payment has no later capture.
+        hyperswitch_supported_payment_methods.add(
+            enums::PaymentMethod::BankRedirect,
+            enums::PaymentMethodType::OpenBanking,
+            PaymentMethodDetails {
+                mandates: enums::FeatureStatus::NotSupported,
+                refunds: enums::FeatureStatus::Supported,
+                supported_capture_methods: vec![enums::CaptureMethod::Automatic],
                 specific_features: None,
             },
         );
@@ -904,7 +926,7 @@ static HYPERSWITCH_SUPPORTED_PAYMENT_METHODS: LazyLock<SupportedPaymentMethods> 
 
 static HYPERSWITCH_CONNECTOR_INFO: ConnectorInfo = ConnectorInfo {
     display_name: "Hyperswitch",
-    description: "Another Hyperswitch deployment as the processor: card payments with 3D Secure, card redirect to its payment link, manual capture and refunds",
+    description: "Another Hyperswitch deployment as the processor: card payments with 3D Secure, card redirect, Klarna and open banking straight to the provider, manual capture and refunds",
     connector_type: enums::HyperswitchConnectorCategory::PaymentGateway,
     integration_status: enums::ConnectorIntegrationStatus::Beta,
 };

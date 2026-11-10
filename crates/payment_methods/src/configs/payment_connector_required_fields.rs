@@ -2057,6 +2057,13 @@ fn get_bank_redirect_required_fields(
                     Connector::Saltedge,
                     fields(vec![], vec![RequiredField::Email], vec![]),
                 ),
+                // Another Hyperswitch deployment: what its open banking processors
+                // need. Salt Edge there needs the email; Volt or TrueLayer there
+                // would also need the billing name.
+                (
+                    Connector::Hyperswitch,
+                    fields(vec![], vec![RequiredField::Email], vec![]),
+                ),
                 (
                     Connector::Truelayer,
                     fields(
@@ -3382,6 +3389,19 @@ fn get_pay_later_required_fields() -> HashMap<enums::PaymentMethodType, Connecto
         (
             enums::PaymentMethodType::Klarna,
             connectors(vec![
+                // Another Hyperswitch deployment: what Klarna needs through its
+                // processors there (Stripe and Adyen read both).
+                (
+                    Connector::Hyperswitch,
+                    fields(
+                        vec![],
+                        vec![
+                            RequiredField::BillingAddressCountries(vec!["ALL"]),
+                            RequiredField::BillingEmail,
+                        ],
+                        vec![],
+                    ),
+                ),
                 (
                     Connector::Stripe,
                     fields(

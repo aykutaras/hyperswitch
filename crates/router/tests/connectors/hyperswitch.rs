@@ -8,17 +8,23 @@
 //! - `HYPERSWITCH_PROFILE_ID` (optional): the target profile, when its merchant
 //!   has more than one.
 //!
-//! The target merchant routes to the target's dummy connector, whose cards are
-//! used here: 4111111111111111 approves, 4000000000000002 declines and
-//! 4000003800000446 asks for 3DS. Completing 3DS or paying on the target's
-//! payment link needs a browser, so both are tested end to end, not here.
+//! The target merchant routes cards to the target's dummy connector, whose
+//! cards are used here: 4111111111111111 approves, 4000000000000002 declines
+//! and 4000003800000446 asks for 3DS. Klarna must be enabled on that dummy
+//! connector too, and card redirect on a processor with its own card page
+//! (Pinnacle or PayTech there): the dummy connector has none. Completing 3DS,
+//! paying on the card page or on Klarna's needs a browser, so those are tested
+//! end to end, not here, as is open banking, which needs a real bank behind the
+//! target's processor.
 //! The dummy connector has no manual capture or void: those tests are ignored
 //! until the target routes to a processor that has them.
 
 use std::str::FromStr;
 
 use common_utils::{pii::Email, types::MinorUnit};
-use hyperswitch_domain_models::payment_method_data::{Card, CardRedirectData, PaymentMethodData};
+use hyperswitch_domain_models::payment_method_data::{
+    Card, CardRedirectData, PayLaterData, PaymentMethodData,
+};
 use hyperswitch_masking::Secret;
 use router::types::{self, api, storage::enums};
 use test_utils::connector_auth;
@@ -105,10 +111,23 @@ fn card_payment(card_number: &str, minor_amount: i64) -> Option<types::PaymentsA
     payment_data(card_number, minor_amount, enums::CaptureMethod::Automatic)
 }
 
-/// Card redirect: no card here; the target's payment link takes it.
-fn payment_link_data(minor_amount: i64) -> Option<types::PaymentsAuthorizeData> {
+/// Card redirect: no card here; the page of the target's processor takes it.
+fn card_redirect_data(minor_amount: i64) -> Option<types::PaymentsAuthorizeData> {
     Some(types::PaymentsAuthorizeData {
         payment_method_data: PaymentMethodData::CardRedirect(CardRedirectData::CardRedirect {}),
+        amount: minor_amount,
+        minor_amount: MinorUnit::new(minor_amount),
+        email: Some(Email::from_str("customer@brand.example").unwrap()),
+        router_return_url: Some(RETURN_URL.to_string()),
+        ..utils::PaymentAuthorizeType::default().0
+    })
+}
+
+/// Klarna: confirmed on the target at once, which sends the payer to Klarna.
+fn klarna_data(minor_amount: i64) -> Option<types::PaymentsAuthorizeData> {
+    Some(types::PaymentsAuthorizeData {
+        payment_method_data: PaymentMethodData::PayLater(PayLaterData::KlarnaRedirect {}),
+        payment_method_type: Some(enums::PaymentMethodType::Klarna),
         amount: minor_amount,
         minor_amount: MinorUnit::new(minor_amount),
         email: Some(Email::from_str("customer@brand.example").unwrap()),
@@ -227,19 +246,29 @@ async fn should_redirect_to_3ds() {
 }
 
 #[actix_web::test]
-async fn should_send_the_payer_to_the_payment_link() {
+async fn should_send_the_payer_straight_to_the_card_page() {
     let response = CONNECTOR
-        .make_payment(payment_link_data(1006), get_default_payment_info())
+        .make_payment(card_redirect_data(1006), get_default_payment_info())
         .await
         .expect("Payment response");
     assert_eq!(response.status, enums::AttemptStatus::AuthenticationPending);
-    assert!(redirection_of(&response), "no redirect to the payment link");
+    assert!(redirection_of(&response), "no redirect to the card page");
 }
 
 #[actix_web::test]
-async fn should_keep_an_unpaid_payment_link_open_on_sync() {
+async fn should_send_the_payer_straight_to_klarna() {
+    let response = CONNECTOR
+        .make_payment(klarna_data(1015), get_default_payment_info())
+        .await
+        .expect("Payment response");
+    assert_eq!(response.status, enums::AttemptStatus::AuthenticationPending);
+    assert!(redirection_of(&response), "no redirect to Klarna");
+}
+
+#[actix_web::test]
+async fn should_keep_an_unpaid_card_redirect_pending_on_sync() {
     let payment = CONNECTOR
-        .make_payment(payment_link_data(1007), get_default_payment_info())
+        .make_payment(card_redirect_data(1007), get_default_payment_info())
         .await
         .expect("Payment response");
     let reference = payment.connector_request_reference_id.clone();
