@@ -11,19 +11,15 @@ use crate::{headers, routes::metrics};
 
 /// Middleware for attaching default response headers. Headers with the same key already set in a
 /// response will not be overwritten.
+///
+/// Responses carry no `Via` or version header: they named the software and its release to every
+/// caller, and the CORS layer, which exposes every response header, listed both names to browsers.
 pub fn default_response_headers() -> actix_web::middleware::DefaultHeaders {
     use actix_web::http::header;
 
-    let default_headers_middleware = actix_web::middleware::DefaultHeaders::new();
-
-    #[cfg(feature = "vergen")]
-    let default_headers_middleware =
-        default_headers_middleware.add(("x-hyperswitch-version", router_env::git_tag!()));
-
-    default_headers_middleware
+    actix_web::middleware::DefaultHeaders::new()
         // Max age of 1 year in seconds, equal to `60 * 60 * 24 * 365` seconds.
         .add((header::STRICT_TRANSPORT_SECURITY, "max-age=31536000"))
-        .add((header::VIA, "HyperSwitch"))
 }
 
 /// Middleware to build a TOP level domain span for each request.
