@@ -1824,7 +1824,7 @@ pub async fn unlink_routing_config(
                 })?;
                 let active_record = parse_de_euclid_routing_record(raw_active_record).ok_or(
                     errors::ApiErrorResponse::InvalidRequestData {
-                        message: "The active rule on the Decision Engine cannot be managed through Hyperswitch; deactivate it from the Decision Engine dashboard".to_string(),
+                        message: "The active rule on the Decision Engine cannot be managed through this API; deactivate it from the Decision Engine dashboard".to_string(),
                     },
                 )?;
 

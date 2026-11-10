@@ -136,7 +136,7 @@ pub enum ApiErrorResponse {
     MandateDeserializationFailed,
     #[error(error_type = ErrorType::ValidationError, code = "HE_03", message = "Return URL is not configured and not passed in payments request")]
     ReturnUrlUnavailable,
-    #[error(error_type = ErrorType::ValidationError, code = "HE_03", message = "This refund is not possible through Hyperswitch. Please raise the refund through {connector} dashboard")]
+    #[error(error_type = ErrorType::ValidationError, code = "HE_03", message = "This refund is not possible through this API. Please raise the refund through {connector} dashboard")]
     RefundNotPossible { connector: String },
     #[error(error_type = ErrorType::ValidationError, code = "HE_03", message = "Mandate Validation Failed" )]
     MandateValidationFailed { reason: String },
@@ -506,7 +506,7 @@ impl ErrorSwitch<api_models::errors::types::ApiErrorResponse> for ApiErrorRespon
             },
             Self::ReturnUrlUnavailable => AER::NotFound(ApiError::new("HE", 3, "Return URL is not configured and not passed in payments request", None)),
             Self::RefundNotPossible { connector } => {
-                AER::BadRequest(ApiError::new("HE", 3, format!("This refund is not possible through Hyperswitch. Please raise the refund through {connector} dashboard"), None))
+                AER::BadRequest(ApiError::new("HE", 3, format!("This refund is not possible through this API. Please raise the refund through {connector} dashboard"), None))
             }
             Self::MandateValidationFailed { reason } => {
                 AER::BadRequest(ApiError::new("HE", 3, "Mandate Validation Failed", Some(Extra { reason: Some(reason.to_owned()), ..Default::default() })))
