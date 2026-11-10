@@ -77,20 +77,8 @@ window.addEventListener("error", (event) => {
     };
     postLog(log, urlToPost);
 });
-  
-window.addEventListener("message", (event) => {
-    let url = window.location.href;
-    let { paymentId, merchantId, attemptId, connector } = parseRoute(url);
-    let urlToPost = getEnvRoute(url);
-    let log = {
-        message: event.data,
-        url,
-        paymentId,
-        merchantId,
-        attemptId,
-        connector,
-    };
-    postLog(log, urlToPost);
-});
+
+// Only page errors are reported. Messages are not: the checkout's frames post
+// to the page all the time, and their data is not ours to send anywhere.
     
     
