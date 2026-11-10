@@ -1,4 +1,12 @@
 // @ts-check
+
+// Status images, drawn inline so that the page loads nothing from another host.
+var STATUS_IMAGE_SUCCESS =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijg4IiBmaWxsPSIjZTdmNGVhIi8+PGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSI2MCIgZmlsbD0iIzJlN2QzMiIvPjxwYXRoIGQ9Ik03MyAxMDFsMTggMTggMzctMzgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+";
+var STATUS_IMAGE_PENDING =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijg4IiBmaWxsPSIjZmRmM2RjIi8+PGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSI2MCIgZmlsbD0iI2I5NzgwMCIvPjxwYXRoIGQ9Ik0xMDAgNjh2MzRsMjIgMTQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+";
+var STATUS_IMAGE_FAILED =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijg4IiBmaWxsPSIjZmJlN2U3Ii8+PGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSI2MCIgZmlsbD0iI2M2MjgyOCIvPjxwYXRoIGQ9Ik03OCA3OGw0NCA0NE0xMjIgNzhsLTQ0IDQ0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMTIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg==";
 /**
  * Trigger - init
  * Uses
@@ -68,7 +76,7 @@ function renderStatusDetails(payoutDetails) {
   var status = payoutDetails.status;
   var statusInfo = {
     statusImageSrc:
-      "https://live.hyperswitch.io/payment-link-assets/success.png",
+      STATUS_IMAGE_SUCCESS,
     statusText: "{{i18n_success_text}}",
     statusMessage: "{{i18n_success_message}}",
   };
@@ -79,7 +87,7 @@ function renderStatusDetails(payoutDetails) {
     case "requires_fulfillment":
     case "pending":
       statusInfo.statusImageSrc =
-        "https://live.hyperswitch.io/payment-link-assets/pending.png";
+        STATUS_IMAGE_PENDING;
       statusInfo.statusText = "{{i18n_pending_text}}";
       statusInfo.statusMessage = "{{i18n_pending_message}}";
       break;
@@ -94,7 +102,7 @@ function renderStatusDetails(payoutDetails) {
     case "requires_vendor_account_creation":
     default:
       statusInfo.statusImageSrc =
-        "https://live.hyperswitch.io/payment-link-assets/failed.png";
+        STATUS_IMAGE_FAILED;
       statusInfo.statusText = "{{i18n_failed_text}}";
       statusInfo.statusMessage = "{{i18n_failed_message}}";
       break;

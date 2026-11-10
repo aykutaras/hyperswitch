@@ -248,7 +248,7 @@ function boot() {
       }
       orderDetails.push({
         "amount": (paymentDetails.amount - charges).toFixed(2),
-        "product_img_link": "https://live.hyperswitch.io/payment-link-assets/cart_placeholder.png",
+        "product_img_link": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iOCIgZmlsbD0iI2VjZWZmMSIvPjxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzkwYTRhZSIgc3Ryb2tlLXdpZHRoPSIzIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMzIgMTRsMTYgOHYyMGwtMTYgOC0xNi04VjIyeiIvPjxwYXRoIGQ9Ik0xNiAyMmwxNiA4IDE2LThNMzIgMzB2MjAiLz48L2c+PC9zdmc+",
         "product_name": translations.miscellaneousCharges + "\n" +
           translations.miscellaneousChargesDetail,
         "quantity": null
@@ -869,40 +869,11 @@ function renderDescription(paymentDetails) {
 
 /**
  * Uses
- *    - Creates and returns a div element with the HyperSwitch branding SVG
- * @param {String} wrapperId 
- * @returns {HTMLDivElement} brandingWrapperNode
+ *    - Draws no "Powered by" branding: the page carries only the merchant's.
+ *      `branding_visibility` is still accepted, and changes nothing.
+ * @param {PaymentDetails} _paymentDetails
  */
-function createHyperSwitchBrandingSVGElement(wrapperId) {
-  var brandingWrapperNode = document.createElement("div");
-  brandingWrapperNode.id = wrapperId;
-  brandingWrapperNode.innerHTML = '<svg class="fill-current" height="18" width="130"><use xlink:href="#hyperswitch-brand" x="0" y="0" height="18" width="130"></use></svg>';
-  return brandingWrapperNode;
-}
-
-/**
- * Uses
- *    - Creates and appends HyperSwitch branding in appropriate sections based on the viewport dimensions (web vs mobile views)
- *    - Only when the profile sets branding_visibility to true; hidden when it is unset
- * @param {PaymentDetails} paymentDetails
- */
-function renderBranding(paymentDetails) {
-  if (paymentDetails.branding_visibility === true) {
-    // Append below cart section for web views
-    var cartItemNode = document.getElementById("hyper-checkout-cart");
-    if (cartItemNode instanceof HTMLDivElement) {
-      var brandingWrapper = createHyperSwitchBrandingSVGElement("powered-by-hyper");
-      cartItemNode.appendChild(brandingWrapper);
-    }
-
-    // Append in document's body for mobile views
-    var mobileBrandingWrapper = createHyperSwitchBrandingSVGElement("hyper-footer");
-    document.body.appendChild(mobileBrandingWrapper);
-    if (!window.state.isMobileView) {
-      hide("#hyper-footer");
-    }
-  }
-}
+function renderBranding(_paymentDetails) {}
 
 /**
  * Uses

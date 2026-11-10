@@ -138,8 +138,8 @@ if (!isFramed) {
     var arr = window.location.pathname.split("/");
 
     // NOTE - This code preserves '/api' in url for integ and sbx envs
-    // e.g. url for integ/sbx - https://integ.hyperswitch.io/api/payment_link/s/merchant_1234/pay_1234?locale=en
-    // e.g. url for others - https://abc.dev.com/payment_link/s/merchant_1234/pay_1234?locale=en
+    // e.g. a link behind /api - /api/payment_link/s/merchant_1234/pay_1234?locale=en
+    // e.g. any other link - /payment_link/s/merchant_1234/pay_1234?locale=en
     var hasApiInPath = arr.includes("api");
     if (hasApiInPath) {
       arr.splice(0, 4);

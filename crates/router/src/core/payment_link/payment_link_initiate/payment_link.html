@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     {{rendered_meta_tag_html}}
-    <title>Payments requested by HyperSwitch</title>
+    <title>Payment</title>
     {{ preload_link_tags }}
     <link rel="preconnect" href="https://fonts.gstatic.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800">
@@ -127,17 +127,18 @@
     <!-- SVG ICONS -->
     <svg xmlns="http://www.w3.org/2000/svg" display="none">
       <defs>
-        <symbol id="cart-icon-small">
-            <image href="https://live.hyperswitch.io/payment-link-assets/icons/cart-small.svg"/>
+        <symbol id="cart-icon-small" viewBox="0 0 24 24">
+            <path d="M3 4h2.2l2.1 10.2a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.1L20.5 8H6.1" fill="none" stroke="#333333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="9.5" cy="19.5" r="1.5" fill="#333333"/>
+            <circle cx="17" cy="19.5" r="1.5" fill="#333333"/>
         </symbol>
-        <symbol id="cart-icon-big">
-            <image href="https://live.hyperswitch.io/payment-link-assets/icons/cart-big.svg"/>
+        <symbol id="cart-icon-big" viewBox="0 0 24 24">
+            <path d="M3 4h2.2l2.1 10.2a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.1L20.5 8H6.1" fill="none" stroke="#333333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="9.5" cy="19.5" r="1.5" fill="#333333"/>
+            <circle cx="17" cy="19.5" r="1.5" fill="#333333"/>
         </symbol>
-        <symbol id="cart-close">
-          <image href="https://live.hyperswitch.io/payment-link-assets/icons/close.svg"/>
-        </symbol>
-        <symbol id="hyperswitch-brand">
-            <image href="https://live.hyperswitch.io/payment-link-assets/icons/powered-by-hyperswitch.svg" opacity="0.4"/>
+        <symbol id="cart-close" viewBox="0 0 24 24">
+            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="#333333" stroke-width="2" stroke-linecap="round"/>
         </symbol>
         <symbol id="arrow-down">
           <svg

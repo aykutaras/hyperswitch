@@ -1,5 +1,13 @@
 // @ts-check
 
+// Status images, drawn inline so that the page loads nothing from another host.
+var STATUS_IMAGE_SUCCESS =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijg4IiBmaWxsPSIjZTdmNGVhIi8+PGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSI2MCIgZmlsbD0iIzJlN2QzMiIvPjxwYXRoIGQ9Ik03MyAxMDFsMTggMTggMzctMzgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+";
+var STATUS_IMAGE_PENDING =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijg4IiBmaWxsPSIjZmRmM2RjIi8+PGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSI2MCIgZmlsbD0iI2I5NzgwMCIvPjxwYXRoIGQ9Ik0xMDAgNjh2MzRsMjIgMTQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+";
+var STATUS_IMAGE_FAILED =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijg4IiBmaWxsPSIjZmJlN2U3Ii8+PGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSI2MCIgZmlsbD0iI2M2MjgyOCIvPjxwYXRoIGQ9Ik03OCA3OGw0NCA0NE0xMjIgNzhsLTQ0IDQ0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMTIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg==";
+
 /**
  * UTIL FUNCTIONS
  */
@@ -204,13 +212,13 @@ function renderStatusDetails(paymentDetails) {
   // Status specific information
   switch (status) {
     case "expired":
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/failed.png";
+      statusDetails.imageSource = STATUS_IMAGE_FAILED;
       statusDetails.status = translations.paymentLinkExpired;
       statusDetails.message = translations.paymentLinkExpiredMessage;
       break;
 
     case "succeeded":
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/success.png";
+      statusDetails.imageSource = STATUS_IMAGE_SUCCESS;
       statusDetails.message = translations.paymentReceived;
       statusDetails.status = translations.paidSuccessfully;
       statusDetails.amountText = new Date(
@@ -220,13 +228,13 @@ function renderStatusDetails(paymentDetails) {
 
     case "requires_customer_action":
     case "processing":
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/pending.png";
+      statusDetails.imageSource = STATUS_IMAGE_PENDING;
       statusDetails.message = translations.paymentTakingLonger;
       statusDetails.status = translations.paymentPending;
       break;
 
     case "failed":
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/failed.png";
+      statusDetails.imageSource = STATUS_IMAGE_FAILED;
       statusDetails.status = translations.paymentFailed;
       var unifiedErrorCode = paymentDetails.unified_code || paymentDetails.error_code;
       var unifiedErrorMessage = paymentDetails.unified_message || paymentDetails.error_message;
@@ -240,29 +248,29 @@ function renderStatusDetails(paymentDetails) {
       break;
 
     case "cancelled":
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/failed.png";
+      statusDetails.imageSource = STATUS_IMAGE_FAILED;
       statusDetails.status = translations.paymentCancelled;
       break;
 
     case "requires_merchant_action":
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/pending.png";
+      statusDetails.imageSource = STATUS_IMAGE_PENDING;
       statusDetails.status = translations.paymentUnderReview;
       break;
 
     case "requires_capture":
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/success.png";
+      statusDetails.imageSource = STATUS_IMAGE_SUCCESS;
       statusDetails.message = translations.paymentReceived;
       statusDetails.status = translations.paymentSuccess;
       break;
 
     case "partially_captured":
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/success.png";
+      statusDetails.imageSource = STATUS_IMAGE_SUCCESS;
       statusDetails.message = translations.partialPaymentCaptured;
       statusDetails.status = translations.paymentSuccess;
       break;
 
     default:
-      statusDetails.imageSource = "https://live.hyperswitch.io/payment-link-assets/failed.png";
+      statusDetails.imageSource = STATUS_IMAGE_FAILED;
       statusDetails.status = translations.somethingWentWrong;
       // Error details
       if (typeof paymentDetails.error === "object") {

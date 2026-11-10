@@ -177,8 +177,9 @@ pub const DEFAULT_ENABLE_BUTTON_ONLY_ON_FORM_READY: bool = false;
 pub const DEFAULT_BACKGROUND_COLOR: &str = "#212E46";
 
 /// Default product Img Link
+/// A neutral placeholder, inline so that the cart loads nothing from another host.
 pub const DEFAULT_PRODUCT_IMG: &str =
-    "https://live.hyperswitch.io/payment-link-assets/cart_placeholder.png";
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iOCIgZmlsbD0iI2VjZWZmMSIvPjxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzkwYTRhZSIgc3Ryb2tlLXdpZHRoPSIzIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMzIgMTRsMTYgOHYyMGwtMTYgOC0xNi04VjIyeiIvPjxwYXRoIGQ9Ik0xNiAyMmwxNiA4IDE2LThNMzIgMzB2MjAiLz48L2c+PC9zdmc+";
 
 /// Show merchant name by default for payment links
 pub const DEFAULT_SHOW_MERCHANT_NAME: bool = true;

@@ -209,3 +209,113 @@ pub fn get_payment_link_status(
         .change_context(PaymentLinkError::TemplateRenderError)
         .attach_printable("Error while rendering payment link status page")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{consts::DEFAULT_MERCHANT_LOGO, get_js_script};
+
+    /// What a page may name: the brand's own hosts and the fonts the pages
+    /// load; never fetched, SVG's namespaces and the comment crediting the
+    /// colour inversion the scripts use.
+    const ALLOWED_HOSTS: [&str; 6] = [
+        "sdk.brand.example",
+        "api.brand.example",
+        "fonts.googleapis.com",
+        "fonts.gstatic.com",
+        "www.w3.org",
+        "github.com",
+    ];
+
+    fn sdk_url() -> url::Url {
+        url::Url::parse("https://sdk.brand.example/web/0.134.0/v1/HyperLoader.js")
+            .expect("a valid URL")
+    }
+
+    fn log_endpoint() -> url::Url {
+        url::Url::parse("https://api.brand.example/logs/redirection").expect("a valid URL")
+    }
+
+    /// The payment details a link without a logo of its own is rendered with.
+    fn js_script(status: &str) -> String {
+        get_js_script(&serde_json::json!({
+            "merchant_logo": DEFAULT_MERCHANT_LOGO,
+            "merchant_name": "Example Shop",
+            "payment_id": "pay_example",
+            "status": status,
+        }))
+        .expect("serialises")
+    }
+
+    fn link_data() -> PaymentLinkFormData {
+        PaymentLinkFormData {
+            js_script: js_script("requires_payment_method"),
+            css_script: String::new(),
+            sdk_url: sdk_url(),
+            html_meta_tags: String::new(),
+            redirection_log_endpoint: Some(log_endpoint()),
+        }
+    }
+
+    /// Every host named after `http://` or `https://`, in the page as the
+    /// browser reads it: the payment details reach it URL-encoded.
+    fn hosts_named(page: &str) -> Vec<String> {
+        let page = urlencoding::decode(page).expect("UTF-8").into_owned();
+        ["http://", "https://"]
+            .iter()
+            .flat_map(|scheme| page.match_indices(scheme).map(|(at, _)| at + scheme.len()))
+            .filter_map(|start| {
+                let host: String = page
+                    .get(start..)?
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-')
+                    .collect();
+                (!host.is_empty()).then_some(host)
+            })
+            .collect()
+    }
+
+    fn assert_carries_no_outside_name(page: &str) {
+        let decoded = urlencoding::decode(page).expect("UTF-8").to_lowercase();
+        for name in ["hyperswitch", "juspay"] {
+            assert!(!decoded.contains(name), "the page names {name}");
+        }
+        for host in hosts_named(page) {
+            assert!(
+                ALLOWED_HOSTS.contains(&host.as_str()),
+                "the page names the host {host}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_payment_link_names_no_outside_host() {
+        let page = build_payment_link_html(link_data()).expect("renders");
+        assert_carries_no_outside_name(&page);
+    }
+
+    #[test]
+    fn a_secure_payment_link_names_no_outside_host() {
+        let page = build_secure_payment_link_html(link_data()).expect("renders");
+        assert_carries_no_outside_name(&page);
+    }
+
+    #[test]
+    fn a_payment_link_is_titled_payment_until_its_script_names_the_seller() {
+        let page = build_payment_link_html(link_data()).expect("renders");
+        assert!(page.contains("<title>Payment</title>"));
+    }
+
+    #[test]
+    fn a_status_page_names_no_outside_host() {
+        for status in ["succeeded", "processing", "failed", "expired"] {
+            let page = get_payment_link_status(PaymentLinkStatusData {
+                js_script: js_script(status),
+                css_script: String::new(),
+                redirection_log_endpoint: Some(log_endpoint()),
+            })
+            .expect("renders");
+            assert_carries_no_outside_name(&page);
+        }
+    }
+}
