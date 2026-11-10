@@ -64,10 +64,10 @@ pub enum ContentType {
     Xml,
 }
 
-fn default_request_headers() -> [(String, Maskable<String>); 1] {
-    use http::header;
-
-    [(header::VIA.to_string(), "HyperSwitch".to_string().into())]
+/// The headers every outgoing request carries: none. A `Via` header named the software to every
+/// connector and on every webhook a merchant received.
+fn default_request_headers() -> [(String, Maskable<String>); 0] {
+    []
 }
 
 #[derive(Debug)]
