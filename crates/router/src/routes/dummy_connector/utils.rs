@@ -114,7 +114,6 @@ pub fn get_authorize_page(
         }
         body {
             div.heading {
-                img.logo src="https://app.hyperswitch.io/assets/Dark/hyperswitchLogoIconWithText.svg" alt="Hyperswitch Logo" {}
                 h1 { "Test Payment Page" }
             }
             div.container {
@@ -147,21 +146,7 @@ pub fn get_authorize_page(
                 p.disclaimer { "What is this page?" }
                 p { "This page is just a simulation for integration and testing purpose. \
                     In live mode, this page will not be displayed and the user will be taken to \
-                    the Bank page (or) Google Pay cards popup (or) original payment method's page. \
-                    Contact us for any queries."
-                }
-                div.contact {
-                    div.contact_item.hover_cursor onclick=(dummy_connector_conf.slack_invite_url) {
-                        img src="https://hyperswitch.io/logos/logo_slack.svg" alt="Slack Logo" {}
-                    }
-                    div.contact_item.hover_cursor onclick=(dummy_connector_conf.discord_invite_url) {
-                        img src="https://hyperswitch.io/logos/logo_discord.svg" alt="Discord Logo" {}
-                    }
-                    div.border_vertical {}
-                    div.contact_item.email {
-                        p { "Or email us at" }
-                        a href="mailto:support.global@juspay.io" { "support.global@juspay.io" }
-                    }
+                    the Bank page (or) Google Pay cards popup (or) original payment method's page."
                 }
             }
         }
@@ -174,11 +159,11 @@ pub fn get_expired_page(dummy_connector_conf: &settings::DummyConnector) -> Stri
         head {
             title { "Authorize Payment" }
             style { (consts::THREE_DS_CSS) }
-            link rel="icon" href="https://app.hyperswitch.io/HyperswitchFavicon.png" {}
+            link rel="icon" href=(types::DummyConnectorPaymentMethodType::Card
+                .get_image_link(dummy_connector_conf.assets_base_url.as_str())) {}
         }
         body {
             div.heading {
-                img.logo src="https://app.hyperswitch.io/assets/Dark/hyperswitchLogoIconWithText.svg" alt="Hyperswitch Logo" {}
                 h1 { "Test Payment Page" }
             }
             div.container {
@@ -186,21 +171,8 @@ pub fn get_expired_page(dummy_connector_conf: &settings::DummyConnector) -> Stri
             }
             div.container {
                 p.disclaimer { "What is this page?" }
-                p { "This page is just a simulation for integration and testing purpose.\
-                    In live mode, this is not visible. Contact us for any queries."
-                }
-                div.contact {
-                    div.contact_item.hover_cursor onclick=(dummy_connector_conf.slack_invite_url) {
-                        img src="https://hyperswitch.io/logos/logo_slack.svg" alt="Slack Logo" {}
-                    }
-                    div.contact_item.hover_cursor onclick=(dummy_connector_conf.discord_invite_url) {
-                        img src="https://hyperswitch.io/logos/logo_discord.svg" alt="Discord Logo" {}
-                    }
-                    div.border_vertical {}
-                    div.contact_item.email {
-                        p { "Or email us at" }
-                        a href="mailto:support.global@juspay.io" { "support.global@juspay.io" }
-                    }
+                p { "This page is just a simulation for integration and testing purpose. \
+                    In live mode, this is not visible."
                 }
             }
         }
