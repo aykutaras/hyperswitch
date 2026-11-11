@@ -2480,9 +2480,36 @@ fn account_accepts_currency(
             })
 }
 
-/// The accounts whose own currencies exclude this payment. The constraint graph
-/// knows connectors by name, so two accounts of one connector pool their
-/// currencies there: Salt Edge's GBP and EUR accounts both pass for either.
+/// The one currency an account's creditor account takes, for a connector whose
+/// account pays into a single one: Salt Edge's IBAN (EUR) or sort code and
+/// account number (GBP). `None` for every other connector, and for a Salt Edge
+/// account naming neither or both, which is left to its Currencies.
+#[cfg(feature = "v1")]
+fn account_creditor_currency(
+    connector_name: &str,
+    metadata: &Option<common_utils::pii::SecretSerdeValue>,
+) -> Option<api_enums::Currency> {
+    match Connector::from_str(connector_name) {
+        Ok(Connector::Saltedge) => {
+            crate::connector::saltedge::transformers::SaltedgeConnectorMetadata::try_from(metadata)
+                .inspect_err(|err| {
+                    logger::warn!(
+                        error = ?err,
+                        "euclid_routing: a Salt Edge account's metadata does not parse; \
+                         leaving the account to its Currencies"
+                    )
+                })
+                .ok()?
+                .creditor_currency()
+        }
+        _ => None,
+    }
+}
+
+/// The accounts that refuse this payment's currency: by their own Currencies,
+/// or by a creditor account in another currency. The constraint graph knows
+/// connectors by name, so two accounts of one connector pool their currencies
+/// there: Salt Edge's GBP and EUR accounts both pass for either.
 #[cfg(feature = "v1")]
 async fn accounts_refusing_currency(
     state: &SessionState,
@@ -2512,17 +2539,23 @@ async fn accounts_refusing_currency(
         }
     };
 
+    let currency = backend_input.payment.currency;
     accounts
         .into_iter()
         .filter_map(|account| {
             let id = account.get_id();
-            let graph_data = admin_api::MCACGraphData::foreign_try_from(account).ok()?;
-            let accepts = account_accepts_currency(
-                graph_data.payment_methods_enabled.as_deref().unwrap_or(&[]),
-                payment_method_type,
-                backend_input.payment.currency,
-            );
-            (!accepts).then_some(id)
+            let creditor_refuses =
+                account_creditor_currency(&account.connector_name, &account.metadata)
+                    .is_some_and(|creditor_currency| creditor_currency != currency);
+            let currencies_refuse =
+                admin_api::MCACGraphData::foreign_try_from(account).is_ok_and(|graph_data| {
+                    !account_accepts_currency(
+                        graph_data.payment_methods_enabled.as_deref().unwrap_or(&[]),
+                        payment_method_type,
+                        currency,
+                    )
+                });
+            (creditor_refuses || currencies_refuse).then_some(id)
         })
         .collect()
 }

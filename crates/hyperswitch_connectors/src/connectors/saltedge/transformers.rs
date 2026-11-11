@@ -157,27 +157,36 @@ impl SaltedgeConnectorMetadata {
     /// names one creditor account.
     pub fn validate(&self) -> Result<(), error_stack::Report<errors::ConnectorError>> {
         self.eur_template()?;
-        let currency = match (
+        let currency = self.creditor_currency().ok_or(report!(
+            errors::ConnectorError::InvalidConnectorConfig {
+                config: ONE_CREDITOR_ACCOUNT,
+            }
+        ))?;
+        self.creditor_for(currency).map(|_| ())
+    }
+
+    /// The one currency this account's creditor account takes: EUR for an IBAN,
+    /// GBP for a sort code and account number. Routing reads it, so a payment in
+    /// the other currency goes to another account whether or not the account's
+    /// Currencies were set. `None` when the account names neither or both, which
+    /// saving refuses (an account saved before that rule).
+    pub fn creditor_currency(&self) -> Option<enums::Currency> {
+        match (
             filled(&self.creditor_iban).is_some(),
             filled(&self.creditor_sort_code).is_some(),
             filled(&self.creditor_account_number).is_some(),
         ) {
-            (true, false, false) => enums::Currency::EUR,
-            (false, true, true) => enums::Currency::GBP,
-            _ => {
-                return Err(report!(errors::ConnectorError::InvalidConnectorConfig {
-                    config: ONE_CREDITOR_ACCOUNT,
-                }))
-            }
-        };
-        self.creditor_for(currency).map(|_| ())
+            (true, false, false) => Some(enums::Currency::EUR),
+            (false, true, true) => Some(enums::Currency::GBP),
+            _ => None,
+        }
     }
 
     fn creditor_iban(&self) -> Result<Secret<String>, error_stack::Report<errors::ConnectorError>> {
         let iban = filled(&self.creditor_iban)
             .map(|iban| iban.replace(' ', "").to_uppercase())
             .ok_or(errors::ConnectorError::InvalidConnectorConfig {
-                config: "metadata.creditor_iban: this account takes no EUR, set each account's Currencies in Configure PMTs",
+                config: "metadata.creditor_iban: this account takes no EUR",
             })?;
         if !is_valid_iban(&iban) {
             return Err(report!(errors::ConnectorError::InvalidConnectorConfig {
@@ -224,12 +233,12 @@ impl SaltedgeConnectorMetadata {
                 let sort_code = filled(&self.creditor_sort_code)
                     .map(|sort_code| sort_code.replace(['-', ' '], ""))
                     .ok_or(errors::ConnectorError::InvalidConnectorConfig {
-                        config: "metadata.creditor_sort_code: this account takes no GBP, set each account's Currencies in Configure PMTs",
+                        config: "metadata.creditor_sort_code: this account takes no GBP",
                     })?;
                 let account_number = filled(&self.creditor_account_number)
                     .map(|account_number| account_number.replace(' ', ""))
                     .ok_or(errors::ConnectorError::InvalidConnectorConfig {
-                        config: "metadata.creditor_account_number: this account takes no GBP, set each account's Currencies in Configure PMTs",
+                        config: "metadata.creditor_account_number: this account takes no GBP",
                     })?;
                 Ok(SaltedgeCreditor {
                     template: SaltedgeTemplate::Fps,
@@ -858,6 +867,37 @@ mod tests {
                 .current_context(),
             errors::ConnectorError::InvalidConnectorConfig { .. }
         ));
+    }
+
+    #[test]
+    fn an_account_with_an_iban_takes_eur() {
+        let metadata = metadata(serde_json::json!({
+            "creditor_name": "Pinnacle Ltd",
+            "creditor_iban": "DE89370400440532013000",
+            "creditor_sort_code": " ",
+        }));
+        assert_eq!(metadata.creditor_currency(), Some(Currency::EUR));
+    }
+
+    #[test]
+    fn an_account_with_a_sort_code_and_account_number_takes_gbp() {
+        let metadata = metadata(serde_json::json!({
+            "creditor_name": "Pinnacle Ltd",
+            "creditor_sort_code": "12-34-56",
+            "creditor_account_number": "12345678",
+        }));
+        assert_eq!(metadata.creditor_currency(), Some(Currency::GBP));
+    }
+
+    #[test]
+    fn an_account_with_both_or_neither_names_no_single_currency() {
+        let sort_code_alone = metadata(serde_json::json!({
+            "creditor_name": "Pinnacle Ltd",
+            "creditor_sort_code": "12-34-56",
+        }));
+        assert_eq!(both_accounts().creditor_currency(), None);
+        assert_eq!(sort_code_alone.creditor_currency(), None);
+        assert_eq!(metadata(serde_json::json!({})).creditor_currency(), None);
     }
 
     #[test]
