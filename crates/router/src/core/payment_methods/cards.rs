@@ -4151,6 +4151,13 @@ pub fn get_banks(
             bank_name: vec![],
             eligible_connectors: connectors,
         }])
+    } else if !state.conf.bank_config.0.contains_key(&pm_type) {
+        // A type with no bank list at all, such as open banking, whose payer
+        // picks the bank at the provider: the answer is the empty list it always
+        // was, without two errors per connector on every payment method list.
+        // A configured type missing one connector still logs below.
+        logger::debug!("Could not find any configured banks for payment_method -> {pm_type}");
+        Ok(vec![])
     } else {
         let mut bank_code_responses = vec![];
         for connector in &connectors {
