@@ -978,12 +978,20 @@ impl Feature<api::Authorize, types::PaymentsAuthorizeData> for types::PaymentsAu
                     self.decide_authentication_type();
                     logger::debug!(auth_type=?self.auth_type);
 
-                    Ok((
-                        connector_integration
-                            .build_request(self, &state.conf.connectors)
-                            .to_payment_failed_response()?,
-                        true,
-                    ))
+                    let request = connector_integration.build_request(self, &state.conf.connectors);
+                    if let Err(error) = &request {
+                        if let Some(error_response) =
+                            connector_config_error_response(error.current_context())
+                        {
+                            logger::warn!(
+                                error = ?error,
+                                "the connector account cannot make this payment; failing the attempt"
+                            );
+                            self.response = Err(error_response);
+                            return Ok((None, false));
+                        }
+                    }
+                    Ok((request.to_payment_failed_response()?, true))
                 } else {
                     Ok((None, false))
                 }
@@ -1203,6 +1211,30 @@ impl Feature<api::Authorize, types::PaymentsAuthorizeData> for types::PaymentsAu
             Err(_err) => (),
         }
     }
+}
+
+/// The attempt's failure when the connector account cannot make the payment:
+/// the account's own configuration is wrong, so the payer can do nothing about
+/// it. The attempt fails with the reason, as a connector's refusal would, and
+/// the merchant reads it on the payment. Failing the request would leave the
+/// payment as it was, with no connector and no error on it. Any other request
+/// error still fails the request.
+fn connector_config_error_response(
+    error: &interface_errors::ConnectorError,
+) -> Option<types::ErrorResponse> {
+    let interface_errors::ConnectorError::InvalidConnectorConfig { config } = error else {
+        return None;
+    };
+    let api_error = ApiErrorResponse::InvalidConnectorConfiguration {
+        config: config.to_string(),
+    };
+    Some(types::ErrorResponse {
+        code: api_error.error_code(),
+        message: api_error.error_message(),
+        status_code: http::StatusCode::BAD_REQUEST.as_u16(),
+        attempt_status: Some(enums::AttemptStatus::Failure),
+        ..Default::default()
+    })
 }
 
 pub trait RouterDataAuthorize {
@@ -1883,4 +1915,37 @@ pub async fn call_unified_connector_service_pre_authenticate_proxy(
         .change_context(interface_errors::ConnectorError::ResponseHandlingFailed)?;
 
     Ok(updated_router_data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_connector_account_that_cannot_pay_fails_the_attempt_with_the_reason() {
+        let error_response = connector_config_error_response(
+            &interface_errors::ConnectorError::InvalidConnectorConfig {
+                config: "metadata.creditor_sort_code: this account takes no GBP",
+            },
+        )
+        .expect("a configuration error fails the attempt");
+        assert_eq!(error_response.code, "IR_30");
+        assert_eq!(
+            error_response.message,
+            "Merchant connector account is configured with invalid \
+             metadata.creditor_sort_code: this account takes no GBP"
+        );
+        assert_eq!(
+            error_response.attempt_status,
+            Some(enums::AttemptStatus::Failure)
+        );
+    }
+
+    #[test]
+    fn any_other_request_error_still_fails_the_request() {
+        let error = interface_errors::ConnectorError::MissingRequiredField {
+            field_name: "billing.email".into(),
+        };
+        assert!(connector_config_error_response(&error).is_none());
+    }
 }
