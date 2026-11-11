@@ -268,9 +268,10 @@ impl SaltedgeConnectorMetadata {
     }
 }
 
-/// `POST /api/v6/customers` for a Partner: the payer's email, which Salt Edge
-/// keeps unique. A second customer with the same email is `409
-/// DuplicatedCustomer`.
+/// `POST /api/v6/customers` for a Partner: the payer's email. Salt Edge answers
+/// an email it already knows with that customer's id (`201`, not the
+/// `DuplicatedCustomer` its error list suggests), so a payer paying again, as a
+/// guest or at another merchant on the same profile, gets the same customer.
 #[derive(Debug, Serialize)]
 pub struct SaltedgeCustomerRequest {
     data: SaltedgeCustomerRequestData,
@@ -457,11 +458,9 @@ impl TryFrom<&SaltedgeRouterData<&PaymentsAuthorizeRouterData>> for SaltedgePaym
         }
 
         // A Partner's payment must name a Salt Edge customer, which the router
-        // creates from the payer's email before this request. It is missing
-        // when there was no email, or when Salt Edge already had a customer with
-        // it (`DuplicatedCustomer`): a guest paying again, whose earlier customer
-        // the router did not keep because there is no Hyperswitch customer to
-        // keep it on.
+        // creates from the payer's email before this request (an email Salt
+        // Edge knows gets its existing customer). It is missing when there was
+        // no email, or when that request failed.
         let customer_id = match router_data.connector_customer.clone() {
             Some(customer_id) => customer_id,
             None if payer_email(router_data, &router_data.request.email).is_none() => {

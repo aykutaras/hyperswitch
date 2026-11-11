@@ -61,7 +61,8 @@ static GBP_CONNECTOR: SaltedgeTest = SaltedgeTest {
     currency: enums::Currency::GBP,
 };
 
-/// Salt Edge keeps one customer per email, so each run makes a new one.
+/// A fresh email each run, so each run creates a Salt Edge customer: an email
+/// Salt Edge already knows would get its existing customer instead.
 fn new_payer_email() -> Email {
     Email::from_str(&format!(
         "saltedge-test-{}@example.com",
