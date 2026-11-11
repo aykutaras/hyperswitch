@@ -673,6 +673,15 @@ pub trait ConnectorSpecifications {
         false
     }
 
+    /// Whether a payment still awaiting the customer (`AuthenticationPending`)
+    /// fails on the scheduler's last payment sync. Off by default, because a
+    /// customer may still finish late at the processor, as with 3DS. A connector
+    /// turns it on when a payment can no longer be finished by the time of its
+    /// last sync, which its sync schedule (`pt_mapping_payment_sync`) then sets.
+    fn expires_unfinished_payment_on_last_sync(&self) -> bool {
+        false
+    }
+
     /// Returns the webhook registration plan for this connector.
     /// Given the requested scope returns a list of (identifier, webhook_url)` tuples. Each tuple corresponds to one connector integration call.
     fn get_webhook_registration_plan(

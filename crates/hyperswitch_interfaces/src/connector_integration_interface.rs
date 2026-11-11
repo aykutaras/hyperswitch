@@ -891,6 +891,13 @@ impl ConnectorSpecifications for ConnectorEnum {
         }
     }
 
+    fn expires_unfinished_payment_on_last_sync(&self) -> bool {
+        match self {
+            Self::Old(connector) => connector.expires_unfinished_payment_on_last_sync(),
+            Self::New(connector) => connector.expires_unfinished_payment_on_last_sync(),
+        }
+    }
+
     fn get_webhook_registration_plan(
         &self,
         scope: &Scope,

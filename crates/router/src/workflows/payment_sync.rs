@@ -12,7 +12,6 @@ use scheduler::{
 #[cfg(feature = "v2")]
 use crate::workflows::revenue_recovery::update_token_expiry_based_on_schedule_time;
 use crate::{
-    consts,
     core::{
         configs::dimension_state,
         errors::StorageErrorExt,
@@ -28,6 +27,9 @@ use crate::{
     },
     utils,
 };
+
+#[cfg(feature = "v1")]
+mod unfinished;
 
 pub struct PaymentsSyncWorkflow;
 
@@ -139,32 +141,27 @@ impl ProcessTrackerWorkflow<SessionState> for PaymentsSyncWorkflow {
                 let is_last_retry = retry_sync_task(
                     db,
                     state.superposition_service.as_ref(),
-                    connector,
+                    connector.clone(),
                     payment_data.payment_attempt.merchant_id.clone(),
                     process,
                 )
                 .await?;
 
-                // If the payment status is still processing and there is no connector transaction_id
-                // then change the payment status to failed if all retries exceeded
-                if is_last_retry
-                    && payment_data.payment_attempt.status == enums::AttemptStatus::Pending
-                    && payment_data
-                        .payment_attempt
-                        .connector_transaction_id
-                        .as_ref()
-                        .is_none()
-                {
+                // On the last retry, a payment that can no longer finish moves to failed.
+                if let Some(failure) = unfinished::last_sync_failure(
+                    state,
+                    &connector,
+                    &payment_data.payment_attempt,
+                    is_last_retry,
+                ) {
                     let payment_intent_update = hyperswitch_domain_models::payments::payment_intent::PaymentIntentUpdate::PGStatusUpdate { status: api_models::enums::IntentStatus::Failed,updated_by: merchant_account.storage_scheme.to_string(), incremental_authorization_allowed: Some(false), feature_metadata: payment_data.payment_intent.feature_metadata.clone(), };
                     let payment_attempt_update =
                         hyperswitch_domain_models::payments::payment_attempt::PaymentAttemptUpdate::ErrorUpdate {
                             connector: None,
                             status: api_models::enums::AttemptStatus::Failure,
-                            error_code: None,
-                            error_message: None,
-                            error_reason: Some(Some(
-                                consts::REQUEST_TIMEOUT_ERROR_MESSAGE_FROM_PSYNC.to_string(),
-                            )),
+                            error_code: failure.error_code,
+                            error_message: failure.error_message,
+                            error_reason: failure.error_reason,
                             amount_capturable: Some(common_utils::types::MinorUnit::new(0)),
                             updated_by: merchant_account.storage_scheme.to_string(),
                             unified_code: None,

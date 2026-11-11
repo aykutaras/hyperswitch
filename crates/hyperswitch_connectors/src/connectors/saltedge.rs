@@ -556,6 +556,7 @@ impl ConnectorIntegration<PSync, PaymentsSyncData, PaymentsResponseData> for Sal
         event_builder: Option<&mut ConnectorEvent>,
     ) -> CustomResult<ErrorResponse, errors::ConnectorError> {
         self.build_error_response(res, event_builder)
+            .map(saltedge::awaiting_payer_when_not_found)
     }
 }
 
@@ -747,6 +748,15 @@ impl ConnectorSpecifications for Saltedge {
         _payment_attempt: &hyperswitch_domain_models::payments::payment_attempt::PaymentAttempt,
     ) -> api::ConnectorCustomerAction {
         api::ConnectorCustomerAction::CallConnectorCustomer
+    }
+
+    /// A payment whose payer never chose a bank stays awaiting the payer, since
+    /// Salt Edge neither shows it nor sends a callback for it
+    /// (`awaiting_payer_when_not_found`). It fails on the scheduler's last sync,
+    /// which Salt Edge's own `pt_mapping_payment_sync` places after Salt Edge's
+    /// payment page can still be used.
+    fn expires_unfinished_payment_on_last_sync(&self) -> bool {
+        true
     }
 }
 

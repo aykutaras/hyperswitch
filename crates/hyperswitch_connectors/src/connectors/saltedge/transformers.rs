@@ -732,6 +732,31 @@ impl SaltedgeErrorResponse {
     }
 }
 
+/// Salt Edge's class for a payment it will not show: "If a requested payment is
+/// not covered by a valid user consent, a PaymentNotFound error will be
+/// returned" (Partner API). The payer gives that consent in the widget.
+const PAYMENT_NOT_FOUND: &str = "PaymentNotFound";
+
+/// What the attempt says while Salt Edge has no consent for the payment.
+const AWAITING_PAYER: &str =
+    "The payer has not chosen a bank yet, so Salt Edge does not show the payment";
+
+/// A payment lookup that Salt Edge answers with `PaymentNotFound`. Salt Edge
+/// keeps a payment whose payer opened the widget and never chose a bank, but
+/// shows it to a Partner only after consent, so the lookup finds nothing. The
+/// payment keeps awaiting the payer instead of failing, with Salt Edge's own
+/// words as the reason. The scheduler's last sync fails it if the payer never
+/// comes back (`expires_unfinished_payment_on_last_sync`). Any other error is
+/// left as it is.
+pub fn awaiting_payer_when_not_found(mut error: ErrorResponse) -> ErrorResponse {
+    if error.code == PAYMENT_NOT_FOUND {
+        error.attempt_status = Some(enums::AttemptStatus::AuthenticationPending);
+        error.reason = Some(error.message);
+        error.message = AWAITING_PAYER.to_string();
+    }
+    error
+}
+
 /// Salt Edge's Success, Failure and Notify callbacks:
 /// `{data: {payment_id, customer_id, status, custom_fields, raw_provider_status,
 /// error_class?, error_message?}, meta: {version, time}}`. The Provider changes
@@ -1120,6 +1145,46 @@ mod tests {
             serde_json::from_str(r#"{"error_class":"PaymentNotFound"}"#).unwrap();
         assert_eq!(flat.code(404), "PaymentNotFound");
         assert_eq!(flat.message(), "PaymentNotFound");
+    }
+
+    /// The error a lookup builds from Salt Edge's answer, as build_error_response does.
+    fn lookup_error(body: &str, status_code: u16) -> ErrorResponse {
+        let response: SaltedgeErrorResponse = serde_json::from_str(body).unwrap();
+        ErrorResponse {
+            status_code,
+            code: response.code(status_code),
+            message: response.message(),
+            reason: response.reason(),
+            ..ErrorResponse::default()
+        }
+    }
+
+    #[test]
+    fn a_payment_salt_edge_does_not_show_keeps_awaiting_the_payer() {
+        let error = awaiting_payer_when_not_found(lookup_error(
+            r#"{"error":{"class":"PaymentNotFound","message":"Payment with id: '1' was not found."},"error_class":null,"error_message":null}"#,
+            404,
+        ));
+        assert_eq!(
+            error.attempt_status,
+            Some(AttemptStatus::AuthenticationPending)
+        );
+        assert_eq!(error.message, AWAITING_PAYER);
+        assert_eq!(
+            error.reason.as_deref(),
+            Some("Payment with id: '1' was not found.")
+        );
+    }
+
+    #[test]
+    fn any_other_lookup_error_is_left_as_it_is() {
+        let error = awaiting_payer_when_not_found(lookup_error(
+            r#"{"error":{"class":"ApiKeyNotFound","message":"The API key was not found."}}"#,
+            404,
+        ));
+        assert_eq!(error.attempt_status, None);
+        assert_eq!(error.code, "ApiKeyNotFound");
+        assert_eq!(error.message, "The API key was not found.");
     }
 
     fn callback(body: &str) -> SaltedgeWebhookBody {
