@@ -1867,6 +1867,20 @@ impl PaymentAttemptInterface for KafkaStore {
             .await
     }
 
+    #[cfg(feature = "v1")]
+    async fn find_payment_attempt_owners_by_connector_txn_id(
+        &self,
+        connector: &str,
+        connector_txn_id: &str,
+    ) -> CustomResult<
+        Vec<hyperswitch_domain_models::payments::payment_attempt::PaymentAttemptOwner>,
+        errors::StorageError,
+    > {
+        self.diesel_store
+            .find_payment_attempt_owners_by_connector_txn_id(connector, connector_txn_id)
+            .await
+    }
+
     #[cfg(feature = "v2")]
     async fn find_payment_attempt_by_profile_id_connector_transaction_id(
         &self,

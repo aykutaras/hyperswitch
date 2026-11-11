@@ -133,6 +133,19 @@ impl PaymentAttemptInterface for MockDb {
         Err(StorageError::MockDbError)?
     }
 
+    #[cfg(feature = "v1")]
+    async fn find_payment_attempt_owners_by_connector_txn_id(
+        &self,
+        _connector: &str,
+        _connector_txn_id: &str,
+    ) -> CustomResult<
+        Vec<hyperswitch_domain_models::payments::payment_attempt::PaymentAttemptOwner>,
+        StorageError,
+    > {
+        // [#172]: Implement function for `MockDb`
+        Err(StorageError::MockDbError)?
+    }
+
     #[cfg(feature = "v2")]
     async fn find_payment_attempt_by_profile_id_connector_transaction_id(
         &self,

@@ -19,6 +19,8 @@ use error_stack::ResultExt;
 use futures::future::{try_join_all, FutureExt};
 #[cfg(feature = "v2")]
 use hyperswitch_domain_models::payments::payment_attempt::ConfirmIntentResponseUpdate;
+#[cfg(feature = "v1")]
+use hyperswitch_domain_models::payments::payment_attempt::PaymentAttemptOwner;
 use hyperswitch_domain_models::{
     mandates::{MandateAmountData, MandateDataType, MandateDetails},
     merchant_key_store::MerchantKeyStore,
@@ -325,6 +327,33 @@ impl<T: DatabaseStore> PaymentAttemptInterface for RouterStore<T> {
             .change_context(errors::StorageError::DecryptionError)
         })
         .await?
+    }
+
+    #[instrument(skip_all)]
+    #[cfg(feature = "v1")]
+    async fn find_payment_attempt_owners_by_connector_txn_id(
+        &self,
+        connector: &str,
+        connector_txn_id: &str,
+    ) -> CustomResult<Vec<PaymentAttemptOwner>, errors::StorageError> {
+        let conn = pg_connection_read(self).await?;
+        DieselPaymentAttempt::find_by_connector_connector_txn_id(&conn, connector, connector_txn_id)
+            .await
+            .map_err(|er| {
+                let new_err = diesel_error_to_data_error(*er.current_context());
+                er.change_context(new_err)
+            })
+            .map(|attempts| {
+                attempts
+                    .into_iter()
+                    .map(|attempt| PaymentAttemptOwner {
+                        processor_merchant_id: attempt
+                            .processor_merchant_id
+                            .unwrap_or(attempt.merchant_id),
+                        merchant_connector_id: attempt.merchant_connector_id,
+                    })
+                    .collect()
+            })
     }
 
     #[instrument(skip_all)]
@@ -1509,6 +1538,21 @@ impl<T: DatabaseStore> PaymentAttemptInterface for KVRouterStore<T> {
                 .await
             }
         }
+    }
+
+    /// The database alone: the KV reverse lookups are keyed by merchant, which
+    /// is what this is for finding. An attempt the drainer has not written yet
+    /// is not found.
+    #[instrument(skip_all)]
+    #[cfg(feature = "v1")]
+    async fn find_payment_attempt_owners_by_connector_txn_id(
+        &self,
+        connector: &str,
+        connector_txn_id: &str,
+    ) -> error_stack::Result<Vec<PaymentAttemptOwner>, errors::StorageError> {
+        self.router_store
+            .find_payment_attempt_owners_by_connector_txn_id(connector, connector_txn_id)
+            .await
     }
 
     #[cfg(feature = "v1")]

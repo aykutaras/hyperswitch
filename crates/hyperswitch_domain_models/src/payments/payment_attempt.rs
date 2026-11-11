@@ -62,6 +62,15 @@ use crate::{
     router_request_types,
 };
 
+/// Whose an attempt is, read without its encrypted fields: the merchant of a
+/// connector callback whose URL names none.
+#[cfg(feature = "v1")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaymentAttemptOwner {
+    pub processor_merchant_id: id_type::MerchantId,
+    pub merchant_connector_id: Option<id_type::MerchantConnectorAccountId>,
+}
+
 #[async_trait::async_trait]
 pub trait PaymentAttemptInterface {
     type Error;
@@ -133,6 +142,16 @@ pub trait PaymentAttemptInterface {
         storage_scheme: storage_enums::MerchantStorageScheme,
         merchant_key_store: &MerchantKeyStore,
     ) -> error_stack::Result<PaymentAttempt, Self::Error>;
+
+    /// The owners of the attempts a connector knows by this transaction id,
+    /// across merchants, at most two. From the database alone: the merchant, and
+    /// so its storage scheme, is what this finds out.
+    #[cfg(feature = "v1")]
+    async fn find_payment_attempt_owners_by_connector_txn_id(
+        &self,
+        connector: &str,
+        connector_txn_id: &str,
+    ) -> error_stack::Result<Vec<PaymentAttemptOwner>, Self::Error>;
 
     #[cfg(feature = "v2")]
     async fn find_payment_attempt_by_profile_id_connector_transaction_id(

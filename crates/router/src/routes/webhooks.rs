@@ -199,3 +199,36 @@ pub async fn receive_network_token_requestor_incoming_webhook<W: types::Outgoing
     ))
     .await
 }
+
+/// Salt Edge's callbacks for a profile several merchants share: one URL for all
+/// of them, the merchant found from the payment. The merchant's own flow then
+/// checks the callback as on `/webhooks/{merchant_id}/{connector_id_or_name}`.
+#[cfg(feature = "v1")]
+#[instrument(skip_all, fields(flow = ?Flow::IncomingWebhookReceive))]
+pub async fn receive_saltedge_incoming_webhook<W: types::OutgoingWebhookType>(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> impl Responder {
+    let flow = Flow::IncomingWebhookReceive;
+
+    Box::pin(api::server_wrap(
+        flow,
+        state,
+        &req,
+        WebhookRequestPayload {
+            connector: api_models::enums::Connector::Saltedge.to_string(),
+        },
+        |state, _: (), _, req_state| {
+            webhooks::saltedge_incoming_webhooks_wrapper::<W>(
+                state.to_owned(),
+                req_state,
+                &req,
+                body.clone(),
+            )
+        },
+        &auth::NoAuth,
+        api_locking::LockAction::NotApplicable,
+    ))
+    .await
+}

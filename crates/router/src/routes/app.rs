@@ -2307,6 +2307,11 @@ impl Webhooks {
                         >),
                     ),
             )
+            // Salt Edge sends every callback of a profile to one URL, so a
+            // profile several merchants share cannot name the merchant in it.
+            .service(web::resource("/saltedge").route(
+                web::post().to(receive_saltedge_incoming_webhook::<webhook_type::OutgoingWebhook>),
+            ))
             .service(
                 web::resource("/{merchant_id}/{connector_id_or_name}")
                     .route(

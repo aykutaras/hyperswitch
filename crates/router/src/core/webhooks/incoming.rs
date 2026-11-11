@@ -155,6 +155,118 @@ pub async fn network_token_incoming_webhooks_wrapper<W: types::OutgoingWebhookTy
     })
 }
 
+/// Salt Edge's callbacks on `/webhooks/saltedge`, for a Salt Edge profile that
+/// several merchants share. A profile has one callback URL, so the URL cannot
+/// name the merchant; the payment's own attempt does, found by Salt Edge's
+/// payment id. The callback then goes through that merchant's flow as if it had
+/// reached `/webhooks/{merchant_id}/{merchant_connector_id}`, with the same
+/// signature check: a callback that fails it is not trusted, and the router asks
+/// Salt Edge for the payment instead. A callback naming no payment (provider
+/// changes) is acknowledged and ignored, as that flow does.
+#[cfg(feature = "v1")]
+#[instrument(skip_all)]
+pub async fn saltedge_incoming_webhooks_wrapper<W: types::OutgoingWebhookType>(
+    state: SessionState,
+    req_state: ReqState,
+    req: &actix_web::HttpRequest,
+    body: actix_web::web::Bytes,
+) -> RouterResponse<serde_json::Value> {
+    use crate::services::authentication::{self as auth, AuthenticateAndFetch};
+
+    let connector_name = Connector::Saltedge.to_string();
+    let connector_data = ConnectorData::get_connector_by_name(
+        &state.conf.connectors,
+        &connector_name,
+        GetToken::Connector,
+        None,
+    )
+    .change_context(errors::ApiErrorResponse::InternalServerError)
+    .attach_printable("Failed construction of ConnectorData for saltedge")?;
+
+    let request_details = IncomingWebhookRequestDetails {
+        method: req.method().clone(),
+        uri: req.uri().clone(),
+        headers: req.headers(),
+        query_params: req.query_string().to_string(),
+        body: &body,
+    };
+
+    let event_type = connector_data
+        .connector
+        .get_webhook_event_type(&request_details, None)
+        .change_context(errors::ApiErrorResponse::WebhookBadRequest)
+        .attach_printable("Could not read the Salt Edge callback")?;
+    if api::WebhookFlow::from(event_type) == api::WebhookFlow::ReturnResponse {
+        logger::info!(
+            ?event_type,
+            "Salt Edge callback with no payment, acknowledged"
+        );
+        return Ok(services::ApplicationResponse::StatusOk);
+    }
+
+    let connector_txn_id = match connector_data
+        .connector
+        .get_webhook_object_reference_id(&request_details)
+        .change_context(errors::ApiErrorResponse::WebhookBadRequest)
+        .attach_printable("Could not read the Salt Edge callback's payment id")?
+    {
+        webhooks::ObjectReferenceId::PaymentId(
+            api_models::payments::PaymentIdType::ConnectorTransactionId(id),
+        ) => id,
+        reference => {
+            return Err(report!(errors::ApiErrorResponse::WebhookResourceNotFound))
+                .attach_printable(format!("A Salt Edge callback names {reference:?}"));
+        }
+    };
+
+    let owners = state
+        .store
+        .find_payment_attempt_owners_by_connector_txn_id(&connector_name, &connector_txn_id)
+        .await
+        .change_context(errors::ApiErrorResponse::InternalServerError)
+        .attach_printable("Failed to look up the payment of a Salt Edge callback")?;
+    let owner = sole_owner(owners)
+        .attach_printable_lazy(|| format!("Salt Edge payment {connector_txn_id}"))?;
+    let merchant_connector_id = owner
+        .merchant_connector_id
+        .ok_or(report!(errors::ApiErrorResponse::WebhookResourceNotFound))
+        .attach_printable_lazy(|| {
+            format!("The attempt of Salt Edge payment {connector_txn_id} has no connector account")
+        })?;
+
+    let (auth, _) = auth::MerchantIdAuth(owner.processor_merchant_id)
+        .authenticate_and_fetch(req.headers(), &state)
+        .await?;
+
+    Box::pin(incoming_webhooks_wrapper::<W>(
+        state,
+        req_state,
+        req,
+        auth.platform,
+        merchant_connector_id.get_string_repr(),
+        body,
+        false,
+    ))
+    .await
+}
+
+/// The one merchant whose attempt carries a connector transaction id. None means
+/// no such payment here; several are refused, since a connector's transaction id
+/// names one payment.
+#[cfg(feature = "v1")]
+fn sole_owner(
+    owners: Vec<hyperswitch_domain_models::payments::payment_attempt::PaymentAttemptOwner>,
+) -> errors::RouterResult<hyperswitch_domain_models::payments::payment_attempt::PaymentAttemptOwner>
+{
+    let mut owners = owners.into_iter();
+    match (owners.next(), owners.next()) {
+        (Some(owner), None) => Ok(owner),
+        (None, _) => Err(report!(errors::ApiErrorResponse::WebhookResourceNotFound)),
+        (Some(_), Some(_)) => Err(report!(errors::ApiErrorResponse::WebhookProcessingFailure))
+            .attach_printable("Several payments carry this connector transaction id"),
+    }
+}
+
 fn confirm_path_for_flow(
     candidate_path: common_enums::ExecutionPath,
     flow: Option<api::WebhookFlow>,
@@ -3744,4 +3856,48 @@ pub async fn process_uas_incoming_webhook<'a>(
         merchant_connector_account: Box::new(mca),
         ack_response,
     })
+}
+
+#[cfg(all(test, feature = "v1"))]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use hyperswitch_domain_models::payments::payment_attempt::PaymentAttemptOwner;
+
+    use super::*;
+
+    fn owner(merchant_id: &'static str) -> PaymentAttemptOwner {
+        PaymentAttemptOwner {
+            processor_merchant_id: common_utils::id_type::MerchantId::try_from(
+                std::borrow::Cow::from(merchant_id),
+            )
+            .unwrap(),
+            merchant_connector_id: None,
+        }
+    }
+
+    #[test]
+    fn a_callback_goes_to_the_one_merchant_whose_payment_it_names() {
+        assert_eq!(
+            sole_owner(vec![owner("merchant_a")]).unwrap(),
+            owner("merchant_a")
+        );
+    }
+
+    #[test]
+    fn a_callback_for_no_payment_here_is_not_found() {
+        let error = sole_owner(vec![]).unwrap_err();
+        assert!(matches!(
+            error.current_context(),
+            errors::ApiErrorResponse::WebhookResourceNotFound
+        ));
+    }
+
+    #[test]
+    fn a_callback_two_merchants_claim_is_refused() {
+        let error = sole_owner(vec![owner("merchant_a"), owner("merchant_b")]).unwrap_err();
+        assert!(matches!(
+            error.current_context(),
+            errors::ApiErrorResponse::WebhookProcessingFailure
+        ));
+    }
 }

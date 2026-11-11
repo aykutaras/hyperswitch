@@ -225,6 +225,37 @@ impl PaymentAttempt {
         .await
     }
 
+    /// The attempts a connector knows by this transaction id, across merchants,
+    /// for a connector whose callbacks reach one URL for every merchant. At most
+    /// two, which is enough to tell one owner from several. The index on
+    /// (connector_transaction_id, merchant_id) serves it.
+    #[cfg(feature = "v1")]
+    pub async fn find_by_connector_connector_txn_id(
+        conn: &DatabaseConnectionWithContext<'_>,
+        connector: &str,
+        connector_txn_id: &str,
+    ) -> StorageResult<Vec<Self>> {
+        let (txn_id, txn_data) = common_utils::types::ConnectorTransactionId::form_id_and_data(
+            connector_txn_id.to_string(),
+        );
+        let connector_transaction_id = txn_id
+            .get_txn_id(txn_data.as_ref())
+            .change_context(DatabaseError::Others)
+            .attach_printable_lazy(|| {
+                format!("Failed to retrieve txn_id for ({txn_id:?}, {txn_data:?})")
+            })?;
+        generics::generic_filter::<<Self as HasTable>::Table, _, _, Self>(
+            conn,
+            dsl::connector_transaction_id
+                .eq(connector_transaction_id.to_owned())
+                .and(dsl::connector.eq(connector.to_owned())),
+            Some(2),
+            None,
+            Some(dsl::modified_at.desc()),
+        )
+        .await
+    }
+
     #[cfg(feature = "v2")]
     pub async fn find_by_profile_id_connector_transaction_id(
         conn: &DatabaseConnectionWithContext<'_>,
