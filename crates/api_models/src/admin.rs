@@ -923,12 +923,21 @@ pub struct WebhookDetails {
 }
 
 impl WebhookDetails {
+    /// An update over the stored details: a field the update leaves out keeps
+    /// its stored value. So does `null`, which reads as left out, so an empty
+    /// `webhook_url` is what removes the stored URL. Outgoing webhooks are then
+    /// skipped as not configured; an empty URL kept as such would make each
+    /// delivery fail instead.
     pub fn merge(self, other: Self) -> Self {
         Self {
             webhook_version: other.webhook_version.or(self.webhook_version),
             webhook_username: other.webhook_username.or(self.webhook_username),
             webhook_password: other.webhook_password.or(self.webhook_password),
-            webhook_url: other.webhook_url.or(self.webhook_url),
+            webhook_url: match other.webhook_url {
+                Some(url) if url.peek().trim().is_empty() => None,
+                Some(url) => Some(url),
+                None => self.webhook_url,
+            },
             payment_created_enabled: other
                 .payment_created_enabled
                 .or(self.payment_created_enabled),
@@ -3998,5 +4007,52 @@ mod tests {
             ..safe_request.clone()
         };
         assert!(unsafe_header.validate().is_err());
+    }
+
+    fn webhook_details(json: serde_json::Value) -> WebhookDetails {
+        serde_json::from_value(json).expect("webhook details")
+    }
+
+    fn stored_webhook_details() -> WebhookDetails {
+        webhook_details(serde_json::json!({
+            "webhook_url": "https://merchant.example/webhooks",
+            "payment_statuses_enabled": ["succeeded"],
+        }))
+    }
+
+    fn merged_url(update: serde_json::Value) -> Option<String> {
+        stored_webhook_details()
+            .merge(webhook_details(update))
+            .webhook_url
+            .map(|url| url.peek().clone())
+    }
+
+    #[test]
+    fn an_empty_webhook_url_removes_the_stored_one() {
+        assert_eq!(merged_url(serde_json::json!({"webhook_url": ""})), None);
+        assert_eq!(merged_url(serde_json::json!({"webhook_url": "  "})), None);
+    }
+
+    #[test]
+    fn a_webhook_url_left_out_or_null_keeps_the_stored_one() {
+        let stored = Some("https://merchant.example/webhooks".to_string());
+        assert_eq!(merged_url(serde_json::json!({})), stored);
+        assert_eq!(merged_url(serde_json::json!({"webhook_url": null})), stored);
+    }
+
+    #[test]
+    fn a_new_webhook_url_replaces_the_stored_one() {
+        assert_eq!(
+            merged_url(serde_json::json!({"webhook_url": "https://other.example/hooks"})),
+            Some("https://other.example/hooks".to_string())
+        );
+    }
+
+    #[test]
+    fn removing_the_url_keeps_the_other_webhook_settings() {
+        let merged = stored_webhook_details().merge(webhook_details(serde_json::json!({
+            "webhook_url": "",
+        })));
+        assert!(merged.payment_statuses_enabled.is_some());
     }
 }
